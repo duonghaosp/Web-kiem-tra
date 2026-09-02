@@ -111,54 +111,8 @@ const ASSESSMENT_CATEGORIES: AssessmentCategory[] = [
   },
 ];
 
-// Danh sách đề thi mặc định
-const INITIAL_ASSIGNMENTS: Assignment[] = [
-  {
-    id: 'asg_1',
-    exam_id: 'ex_1',
-    title: 'Kiểm Tra 15 Phút: Vị Trí Địa Lí & Bản Đồ Việt Nam',
-    target_type: 'class',
-    target_ids: ['Lớp 6A1', 'Lớp 6A2'],
-    start_time: new Date().toISOString(),
-    deadline: '2026-09-05T23:59:00',
-    allow_late: true,
-    grade: 6,
-    category: 'Kiểm tra 15 phút',
-    duration_minutes: 15,
-    submissions_count: 28,
-    total_students: 62,
-  },
-  {
-    id: 'asg_2',
-    exam_id: 'ex_2',
-    title: 'Đố Vui Thơ Lục Bát: Khám Phá Địa Danh 3 Miền',
-    target_type: 'class',
-    target_ids: ['Lớp 6A1', 'Lớp 6A3', 'Lớp 6A4'],
-    start_time: new Date().toISOString(),
-    deadline: '2026-09-06T18:00:00',
-    allow_late: true,
-    grade: 6,
-    category: 'Đánh giá thường xuyên',
-    duration_minutes: 10,
-    submissions_count: 45,
-    total_students: 92,
-  },
-  {
-    id: 'asg_3',
-    exam_id: 'ex_3',
-    title: 'Khảo Sát Địa Lí Tự Nhiên & Biển Đảo Khối 9',
-    target_type: 'class',
-    target_ids: ['Lớp 9A1', 'Lớp 9A2'],
-    start_time: new Date().toISOString(),
-    deadline: '2026-09-03T17:00:00',
-    allow_late: false,
-    grade: 9,
-    category: 'Kiểm tra 1 tiết (Định kì)',
-    duration_minutes: 45,
-    submissions_count: 58,
-    total_students: 60,
-  },
-];
+// Danh sách đề thi mặc định ban đầu (Rỗng hoàn toàn khi giáo viên chưa giao bài)
+const INITIAL_ASSIGNMENTS: Assignment[] = [];
 
 export const AssignmentsPage: React.FC = () => {
   const navigate = useNavigate();
@@ -169,12 +123,19 @@ export const AssignmentsPage: React.FC = () => {
       const saved = localStorage.getItem('geo_assignments');
       if (saved !== null) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
+        if (Array.isArray(parsed)) {
+          // Lọc sạch toàn bộ các bài mẫu mặc định cũ
+          const cleaned = parsed.filter((a: any) => !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(a.id));
+          if (cleaned.length !== parsed.length) {
+            localStorage.setItem('geo_assignments', JSON.stringify(cleaned));
+          }
+          return cleaned;
+        }
       }
     } catch (e) {
       console.warn('Lỗi đọc assignments:', e);
     }
-    return INITIAL_ASSIGNMENTS;
+    return [];
   });
 
   const saveAssignments = (newAsgs: Assignment[]) => {

@@ -84,12 +84,15 @@ export const TeacherDashboardPage: React.FC = () => {
       const saved = localStorage.getItem('geo_assignments');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.length;
+        if (Array.isArray(parsed)) {
+          const valid = parsed.filter((a: any) => !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(a.id));
+          return valid.length;
+        }
       }
     } catch (e) {
       console.warn(e);
     }
-    return 4;
+    return 0;
   });
 
   // Lắng nghe sự kiện cập nhật dữ liệu thời gian thực
@@ -102,7 +105,12 @@ export const TeacherDashboardPage: React.FC = () => {
         if (savedClasses) setClassesList(JSON.parse(savedClasses));
 
         const savedSubs = localStorage.getItem('geo_student_submissions');
-        if (savedSubs) setSubmissions(JSON.parse(savedSubs));
+        if (savedSubs) {
+          const parsedSubs = JSON.parse(savedSubs);
+          if (Array.isArray(parsedSubs)) {
+            setSubmissions(parsedSubs.filter((s: any) => !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(s.assignment_id)));
+          }
+        }
 
         const savedBank = localStorage.getItem('geo_question_bank');
         if (savedBank) {
@@ -113,7 +121,12 @@ export const TeacherDashboardPage: React.FC = () => {
         const savedAsgs = localStorage.getItem('geo_assignments');
         if (savedAsgs) {
           const parsed = JSON.parse(savedAsgs);
-          if (Array.isArray(parsed)) setAssignmentsCount(parsed.length);
+          if (Array.isArray(parsed)) {
+            const valid = parsed.filter((a: any) => !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(a.id));
+            setAssignmentsCount(valid.length);
+          }
+        } else {
+          setAssignmentsCount(0);
         }
       } catch (e) {
         console.warn(e);

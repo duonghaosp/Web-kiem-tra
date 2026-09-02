@@ -36,77 +36,8 @@ import { BadgeList } from '../components/common/BadgeList';
 import { getStudentBadges, toggleBadgeForStudent } from '../data/badgeService';
 import { playSoftClick } from '../utils/soundEffects';
 
-// Danh sách bài nộp mẫu của học sinh
-const DEFAULT_SUBMISSIONS: any[] = [
-  {
-    id: 'sub_1',
-    assignment_id: 'asg_1',
-    assignment_title: 'Kiểm Tra 15 Phút: Vị Trí Địa Lí & Bản Đồ',
-    student_name: 'Nguyễn Văn An',
-    student_code: 'HS0601',
-    class_name: 'Lớp 6A1',
-    score_tn: 6.5,
-    max_score_tn: 7.0,
-    score_tl: 2.5,
-    max_score_tl: 3.0,
-    score: 9.0,
-    max_score: 10.0,
-    is_late: false,
-    submitted_at: '15 phút trước',
-    status: 'graded',
-    teacher_feedback_text: 'Em nắm rất vững kiến thức và lập luận câu tự luận chặt chẽ!',
-    essay_question: 'Em hãy nêu 2 thuận lợi cơ bản do vị trí địa lí mang lại cho thiên nhiên nước ta.',
-    essay_answer: '1. Nước ta có khí hậu nhiệt đới ẩm, nhiều ánh sáng và nước mưa dồi dào;\n2. Sinh vật rất đa dạng, có nhiều loài động thực vật quý hiếm phát triển quanh năm.',
-    answers_json: {
-      q_take_1: 0,
-      q_take_2: 0,
-      q_take_3: { st1: true, st2: false },
-      q_take_4: { blank_1: 'Phan-xi-păng' },
-    },
-  },
-  {
-    id: 'sub_2',
-    assignment_id: 'asg_1',
-    assignment_title: 'Kiểm Tra 15 Phút: Vị Trí Địa Lí & Bản Đồ',
-    student_name: 'Tẩn Thị Lan Anh',
-    student_code: 'HS071',
-    class_name: 'Lớp 7A1',
-    score_tn: 7.0,
-    max_score_tn: 7.0,
-    score_tl: 0,
-    max_score_tl: 3.0,
-    score: 7.0,
-    max_score: 10.0,
-    is_late: false,
-    submitted_at: '30 phút trước',
-    status: 'waiting_teacher_grading',
-    teacher_feedback_text: '',
-    essay_question: 'Em hãy nêu 2 thuận lợi cơ bản do vị trí địa lí mang lại cho thiên nhiên nước ta.',
-    essay_answer: 'Vị trí địa lí giúp nước ta có nguồn nhiệt ẩm dồi dào, cây cối xanh tốt quanh năm và có đường bờ biển dài thuận lợi phát triển kinh tế biển.',
-    answers_json: {},
-  },
-  {
-    id: 'sub_3',
-    assignment_id: 'asg_2',
-    assignment_title: 'Khảo Sát Địa Lí Tự Nhiên & Biển Đảo Khối 9',
-    student_name: 'Lò Giá Bè',
-    student_code: 'HS074',
-    class_name: 'Lớp 7A1',
-    score_tn: 5.5,
-    max_score_tn: 7.0,
-    score_tl: 0,
-    max_score_tl: 3.0,
-    score: 5.5,
-    max_score: 10.0,
-    is_late: true,
-    submitted_at: '2 giờ trước',
-    status: 'waiting_teacher_grading',
-    teacher_feedback_text: '',
-    essay_question: 'Phân tích ý nghĩa của vùng biển đối với phát triển kinh tế nước ta.',
-    essay_answer: 'Vùng biển nước ta có nhiều dầu khí, muối, hải sản và cảnh đẹp để làm du lịch.',
-    answers_json: {},
-  },
-];
+// Danh sách bài nộp mẫu của học sinh (Rỗng ban đầu khi giáo viên chưa giao đề thi)
+const DEFAULT_SUBMISSIONS: any[] = [];
 
 const PRESET_FEEDBACKS = [
   '🌟 Em nắm rất vững kiến thức và làm bài rất tốt!',
@@ -224,12 +155,21 @@ export const ExamGradingPage: React.FC = () => {
       const saved = localStorage.getItem('geo_student_submissions');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) {
+          // Lọc bỏ toàn bộ bài nộp gắn liền với các bài mẫu mặc định cũ
+          const cleaned = parsed.filter(
+            (s: any) => !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(s.assignment_id)
+          );
+          if (cleaned.length !== parsed.length) {
+            localStorage.setItem('geo_student_submissions', JSON.stringify(cleaned));
+          }
+          return cleaned;
+        }
       }
     } catch (e) {
       console.warn('Lỗi đọc submissions:', e);
     }
-    return DEFAULT_SUBMISSIONS;
+    return [];
   });
 
   // Đọc danh sách các đợt giao bài từ LocalStorage

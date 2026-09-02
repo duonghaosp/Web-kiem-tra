@@ -111,56 +111,20 @@ export const StudentDashboardPage: React.FC = () => {
         profile?.full_name || ''
       ).map((k) => k.toLowerCase());
 
+      const MOCK_ASG_IDS = ['asg_1', 'asg_2', 'asg_3', 'asg_4'];
       let rawAsgs: any[] = [];
       if (storedAsgs !== null) {
         const parsed = JSON.parse(storedAsgs);
-        if (Array.isArray(parsed) && parsed.length > 0) rawAsgs = parsed;
+        if (Array.isArray(parsed)) {
+          // Lọc bỏ hoàn toàn các bài mẫu mặc định cũ theo yêu cầu của Cô Hảo
+          rawAsgs = parsed.filter((a: any) => !MOCK_ASG_IDS.includes(a.id));
+          // Nếu có chứa bài mẫu cũ, dọn sạch ngay trong LocalStorage
+          if (rawAsgs.length !== parsed.length) {
+            localStorage.setItem('geo_assignments', JSON.stringify(rawAsgs));
+          }
+        }
       }
-      // Nạp đề thi mặc định nếu chưa có đề nào được lưu để giáo viên luôn có đề thử nghiệm ngay
-      if (rawAsgs.length === 0) {
-        rawAsgs = [
-          {
-            id: 'asg_1',
-            exam_id: 'ex_1',
-            title: 'Kiểm Tra 15 Phút: Vị Trí Địa Lí & Bản Đồ Việt Nam (Khối 6)',
-            grade: 6,
-            category: 'Kiểm tra 15 phút',
-            duration_minutes: 15,
-            target_ids: ['all'],
-            is_paused: false,
-          },
-          {
-            id: 'asg_2',
-            exam_id: 'ex_2',
-            title: 'Đánh Giá Thường Xuyên: Thiên Nhiên Châu Á & Khí Hậu Gió Mùa (Khối 7)',
-            grade: 7,
-            category: 'Đánh giá thường xuyên',
-            duration_minutes: 15,
-            target_ids: ['all'],
-            is_paused: false,
-          },
-          {
-            id: 'asg_3',
-            exam_id: 'ex_3',
-            title: 'Khảo Sát Định Kì: Địa Hình & Khoáng Sản Việt Nam (Khối 8)',
-            grade: 8,
-            category: 'Kiểm tra 1 tiết (Định kì)',
-            duration_minutes: 45,
-            target_ids: ['all'],
-            is_paused: false,
-          },
-          {
-            id: 'asg_4',
-            exam_id: 'ex_4',
-            title: 'Thi Thử Giữa Kì II: Địa Lí Kinh Tế - Xã Hội & Biển Đảo (Khối 9)',
-            grade: 9,
-            category: 'Kiểm tra giữa kì II',
-            duration_minutes: 45,
-            target_ids: ['all'],
-            is_paused: false,
-          },
-        ];
-      }
+      // Khi giáo viên chưa giao bài nào thì danh sách hoàn toàn trống (rawAsgs = [])
 
       const studentClass = profile?.class_name || '';
 
@@ -567,27 +531,27 @@ export const StudentDashboardPage: React.FC = () => {
         </div>
 
         {assignments.length === 0 ? (
-          <div className="text-center py-10 px-4 bg-slate-50/70 rounded-2xl border border-dashed border-slate-200 space-y-2.5">
-            <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-inner border border-emerald-100">
-              <CheckCircle2 className="w-6 h-6" />
+          <div className="text-center py-12 px-6 bg-slate-50/80 rounded-3xl border-2 border-dashed border-slate-200 space-y-3">
+            <div className="w-14 h-14 rounded-2xl bg-[#E6F0ED] text-[#2D4441] flex items-center justify-center mx-auto shadow-inner border border-[#CFDCD9]">
+              <CalendarCheck className="w-7 h-7 text-[#2D4441]" />
             </div>
-            <h4 className="font-black text-slate-800 text-sm">
+            <h4 className="font-black text-slate-800 text-base">
               {isMockStudent
-                ? `Chưa có bài kiểm tra nào ${mockGradeFilter !== 'all' ? `dành cho Khối ${mockGradeFilter}` : ''}`
-                : `Hiện tại chưa có bài kiểm tra mới nào dành cho Khối ${studentGrade} ${profile?.class_name ? `(${profile.class_name})` : ''}`}
+                ? `Hiện Tại Chưa Có Bài Kiểm Tra Nào Được Giao ${mockGradeFilter !== 'all' ? `(Khối ${mockGradeFilter})` : ''}`
+                : `Hiện Tại Cô Hảo Chưa Giao Bài Kiểm Tra Nào Cho Em`}
             </h4>
-            <p className="text-xs text-slate-500 max-w-md mx-auto leading-relaxed">
+            <p className="text-xs text-slate-500 max-w-lg mx-auto leading-relaxed">
               {isMockStudent
-                ? 'Cô Hảo có thể chuyển sang chọn "Tất Cả Khối" hoặc vào phần Quản Lý Bài Tập & Đề Thi để tạo thêm đề mới nhé!'
-                : `Khi cô Hảo giao bài kiểm tra hoặc đố vui cho Khối ${studentGrade}, đề thi sẽ tự động hiển thị tại đây nhé!`}
+                ? 'Khi Cô Hảo vào mục "Quản Lý Bài Tập & Đề Thi" để tạo đề thi mới và giao cho các lớp, danh sách bài kiểm tra sẽ tự động xuất hiện tại đây để cô thử nghiệm hoặc học sinh làm bài.'
+                : `Khi nào Cô Hảo giao bài kiểm tra hoặc đố vui cho Khối ${studentGrade} ${profile?.class_name ? `(${profile.class_name})` : ''}, đề thi sẽ tự động hiển thị tại đây để em làm bài nhé!`}
             </p>
             {isMockStudent && (
               <div className="pt-2">
                 <Link
                   to="/assignments"
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#2D4441] hover:bg-[#233835] text-white text-xs font-bold transition shadow-xs"
+                  className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[#2D4441] hover:bg-[#233835] text-white text-xs font-bold transition shadow-sm cursor-pointer"
                 >
-                  <span>+ Vào Quản Lý & Tạo Đề Thi</span>
+                  <span>➕ Vào Quản Lý & Giao Bài Mới Ngay</span>
                 </Link>
               </div>
             )}
