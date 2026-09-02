@@ -1,13 +1,25 @@
 import { createClient } from '@supabase/supabase-js';
 
-// Lấy biến môi trường URL và ANON KEY
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL || 'https://your-project-id.supabase.co';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.dummy';
+// URL và Public Anon Key của dự án Supabase Cô Hảo
+// Khóa Anon là khóa công khai (Public) của Supabase, an toàn để tích hợp trên Web / Mobile
+const DEFAULT_SUPABASE_URL = 'https://tdtrrdjslpezsmomgenz.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY =
+  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRkdHJyZGpzbHBlenNtb21nZW56Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODgwNzM4MzYsImV4cCI6MjEwMzY0OTgzNn0.88A6T3_rdSgycWWeVcoJ0WDwbTjstGrNLlhNlQ-ZiwM';
+
+const supabaseUrl =
+  (import.meta.env.VITE_SUPABASE_URL && !import.meta.env.VITE_SUPABASE_URL.includes('your-project-id'))
+    ? import.meta.env.VITE_SUPABASE_URL
+    : DEFAULT_SUPABASE_URL;
+
+const supabaseAnonKey =
+  (import.meta.env.VITE_SUPABASE_ANON_KEY && !import.meta.env.VITE_SUPABASE_ANON_KEY.includes('dummy'))
+    ? import.meta.env.VITE_SUPABASE_ANON_KEY
+    : DEFAULT_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(
-  import.meta.env.VITE_SUPABASE_URL &&
-  import.meta.env.VITE_SUPABASE_ANON_KEY &&
-  !import.meta.env.VITE_SUPABASE_URL.includes('your-project-id')
+  supabaseUrl &&
+  supabaseAnonKey &&
+  !supabaseUrl.includes('your-project-id')
 );
 
 // Khởi tạo Supabase Client
@@ -16,6 +28,11 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
     detectSessionInUrl: true,
+  },
+  realtime: {
+    params: {
+      eventsPerSecond: 10,
+    },
   },
 });
 

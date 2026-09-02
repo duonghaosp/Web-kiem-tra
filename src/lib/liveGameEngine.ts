@@ -240,7 +240,11 @@ export function registerActiveRoom(room: Partial<ActiveLiveRoom> & { pin: string
   const title = room.title || 'Đấu Trường Đố Vui Địa Lí THCS';
   const teacherName = room.teacher_name || 'Cô Dương Thu Hảo';
   const grade = room.grade || 7;
-  const status = room.status || 'lobby';
+  let rawStatus = room.status || 'lobby';
+  let dbStatus: string = rawStatus;
+  if (rawStatus === 'final_summary') {
+    dbStatus = 'leaderboard';
+  }
   const totalQuestions = room.total_questions || 5;
 
   // 1. Lưu trữ LocalStorage cục bộ
@@ -253,7 +257,7 @@ export function registerActiveRoom(room: Partial<ActiveLiveRoom> & { pin: string
       title,
       teacher_name: teacherName,
       grade,
-      status,
+      status: rawStatus,
       total_questions: totalQuestions,
       created_at: room.created_at || new Date().toISOString(),
       updated_at: Date.now(),
@@ -274,9 +278,10 @@ export function registerActiveRoom(room: Partial<ActiveLiveRoom> & { pin: string
           room_code: cleanPin,
           title,
           teacher_name: teacherName,
-          status,
+          status: dbStatus,
           time_per_question: (room as any).time_per_question || 20,
           current_question_index: (room as any).current_question_index || 0,
+          questions_json: (room as any).questions || [],
         },
         { onConflict: 'room_code' }
       )

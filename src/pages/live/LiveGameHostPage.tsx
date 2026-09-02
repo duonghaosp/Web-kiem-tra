@@ -333,9 +333,24 @@ export const LiveGameHostPage: React.FC = () => {
     };
   }, [roomCode, currentQIndex, timePerQuestion, questions]);
 
-  // 1.1 Tự động Đăng ký và Giữ phòng đấu hoạt động trên toàn hệ thống
+  // 1.1 Tự động Đăng ký và cập nhật trạng thái phòng đấu lên Supabase Cloud & LocalStorage
   useEffect(() => {
-    const register = () => {
+    registerActiveRoom({
+      pin: roomCode,
+      title: `Đấu Trường Đố Vui Địa Lí THCS - Khối ${pickerGrade}`,
+      teacher_name: profile?.full_name || 'Cô Dương Thu Hảo',
+      grade: pickerGrade,
+      status: status,
+      total_questions: questions.length,
+      questions: questions,
+      time_per_question: timePerQuestion,
+      current_question_index: currentQIndex,
+    } as any);
+  }, [roomCode, status, pickerGrade, questions.length, timePerQuestion, currentQIndex, profile]);
+
+  // Heartbeat định kỳ giữ phòng luôn mở và CHỈ hủy phòng khi cô Hảo rời trang (Unmount)
+  useEffect(() => {
+    const timer = setInterval(() => {
       registerActiveRoom({
         pin: roomCode,
         title: `Đấu Trường Đố Vui Địa Lí THCS - Khối ${pickerGrade}`,
@@ -343,17 +358,17 @@ export const LiveGameHostPage: React.FC = () => {
         grade: pickerGrade,
         status: status,
         total_questions: questions.length,
-      });
-    };
-
-    register();
-    const timer = setInterval(register, 8000);
+        questions: questions,
+        time_per_question: timePerQuestion,
+        current_question_index: currentQIndex,
+      } as any);
+    }, 6000);
 
     return () => {
       clearInterval(timer);
       removeActiveRoom(roomCode);
     };
-  }, [roomCode, status, pickerGrade, questions.length, profile]);
+  }, [roomCode]);
 
   // 1.2 Tự động đồng bộ danh sách học sinh từ Supabase Cloud khi ở phòng chờ
   useEffect(() => {
