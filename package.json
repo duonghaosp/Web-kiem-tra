@@ -6,7 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "audit:imports": "node scripts/audit_imports.cjs"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   },
   "dependencies": {
     "@hello-pangea/dnd": "^17.0.0",
