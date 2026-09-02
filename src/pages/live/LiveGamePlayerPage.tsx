@@ -11,8 +11,9 @@ import {
   Zap,
   Award,
 } from 'lucide-react';
-import { KAHOOT_COLORS, LiveGameSync, isValidActiveRoom } from '../../lib/liveGameEngine';
+import { KAHOOT_COLORS, LiveGameSync, checkValidActiveRoom } from '../../lib/liveGameEngine';
 import { triggerCelebration } from '../../lib/gamification';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 export const LiveGamePlayerPage: React.FC = () => {
   const { roomId } = useParams();
@@ -44,55 +45,84 @@ export const LiveGamePlayerPage: React.FC = () => {
       return;
     }
 
-    // 🛑 Kiểm tra mã PIN phòng có đang thực sự mở hay không
-    const validation = isValidActiveRoom(roomId);
-    if (!validation.valid) {
-      alert(validation.error || 'Phòng đấu không tồn tại hoặc chưa được mở!');
-      navigate('/live/join');
-      return;
-    }
+    let isMounted = true;
+    const initPlayer = async () => {
+      // 🛑 Kiểm tra mã PIN phòng có đang thực sự mở hay không (qua Supabase Cloud & LocalStorage)
+      const validation = await checkValidActiveRoom(roomId);
+      if (!isMounted) return;
+      if (!validation.valid) {
+        alert(validation.error || 'Phòng đấu không tồn tại hoặc chưa được mở!');
+        navigate('/live/join');
+        return;
+      }
 
-    // Kết nối đồng bộ Realtime
-    syncRef.current = new LiveGameSync(roomId, (event) => {
-      if (event.type === 'QUESTION_START') {
-        setCurrentQIndex(event.payload.question_index);
-        setTotalQuestions(event.payload.total_questions);
-        setChosenOption(null);
-        setIsCorrect(null);
-        setGameState('answering');
-        startTimeRef.current = Date.now();
-      } else if (event.type === 'ROUND_RESULT') {
-        const correctIdx = event.payload.correct_index;
-        setCorrectIndex(correctIdx);
-        setGameState('result');
-      } else if (event.type === 'SHOW_FINAL_SUMMARY' || event.type === 'GAME_FINISHED') {
-        setGameState('finished');
-        triggerCelebration();
+      // Kết nối đồng bộ Realtime
+      syncRef.current = new LiveGameSync(roomId, (event) => {
+        if (event.type === 'QUESTION_START') {
+          setCurrentQIndex(event.payload.question_index);
+          setTotalQuestions(event.payload.total_questions);
+          setChosenOption(null);
+          setIsCorrect(null);
+          setGameState('answering');
+          startTimeRef.current = Date.now();
+        } else if (event.type === 'ROUND_RESULT') {
+          const correctIdx = event.payload.correct_index;
+          setCorrectIndex(correctIdx);
+          setGameState('result');
+        } else if (event.type === 'SHOW_FINAL_SUMMARY' || event.type === 'GAME_FINISHED') {
+          setGameState('finished');
+          triggerCelebration();
 
-        // Tìm thứ hạng của học sinh
-        if (event.payload?.top_participants) {
-          const rankIdx = event.payload.top_participants.findIndex(
-            (p: any) => p.student_name === studentName
-          );
-          if (rankIdx !== -1) {
-            setFinalRank(rankIdx + 1);
+          // Tìm thứ hạng của học sinh
+          if (event.payload?.top_participants) {
+            const rankIdx = event.payload.top_participants.findIndex(
+              (p: any) => p.student_name === studentName
+            );
+            if (rankIdx !== -1) {
+              setFinalRank(rankIdx + 1);
+            }
           }
         }
-      }
-    });
-
-    // Báo danh vào phòng
-    if (syncRef.current) {
-      syncRef.current.broadcast('STUDENT_JOIN', {
-        id: 'p_' + Date.now(),
-        room_id: roomId,
-        student_name: studentName,
-        score: 0,
-        streak: 0,
       });
-    }
+
+      // Báo danh vào phòng trên Supabase Database
+      if (isSupabaseConfigured) {
+        try {
+          const { data: roomData } = await supabase
+            .from('live_game_rooms')
+            .select('id')
+            .eq('room_code', roomId)
+            .maybeSingle();
+
+          if (roomData?.id) {
+            await supabase.from('live_game_participants').insert({
+              room_id: roomData.id,
+              student_name: studentName,
+              score: 0,
+              streak: 0,
+            });
+          }
+        } catch (e) {
+          console.warn('Lỗi lưu participant lên Supabase:', e);
+        }
+      }
+
+      // Báo danh qua Realtime Broadcast
+      if (syncRef.current) {
+        syncRef.current.broadcast('STUDENT_JOIN', {
+          id: 'p_' + Date.now(),
+          room_id: roomId,
+          student_name: studentName,
+          score: 0,
+          streak: 0,
+        });
+      }
+    };
+
+    initPlayer();
 
     return () => {
+      isMounted = false;
       if (syncRef.current) syncRef.current.close();
     };
   }, [roomId, studentName]);

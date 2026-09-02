@@ -58,6 +58,7 @@ import { getStoredLessons, LessonItem } from '../../data/curriculum';
 import { getStoredQuestions } from '../../data/questionBank';
 import { getStoredExamTemplates } from '../../data/examTemplates';
 import { soundFx } from '../../lib/soundEffects';
+import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
 // 5 Câu hỏi trắc nghiệm Đấu trường khởi động mặc định
 const DEFAULT_ARENA_QUESTIONS: Question[] = [
@@ -353,6 +354,56 @@ export const LiveGameHostPage: React.FC = () => {
       removeActiveRoom(roomCode);
     };
   }, [roomCode, status, pickerGrade, questions.length, profile]);
+
+  // 1.2 Tự động đồng bộ danh sách học sinh từ Supabase Cloud khi ở phòng chờ
+  useEffect(() => {
+    if (status !== 'lobby' || !isSupabaseConfigured) return;
+
+    const fetchCloudParticipants = async () => {
+      try {
+        const { data: roomData } = await supabase
+          .from('live_game_rooms')
+          .select('id')
+          .eq('room_code', roomCode)
+          .maybeSingle();
+
+        if (roomData?.id) {
+          const { data: cloudParts } = await supabase
+            .from('live_game_participants')
+            .select('*')
+            .eq('room_id', roomData.id);
+
+          if (cloudParts && cloudParts.length > 0) {
+            setParticipants((prev) => {
+              const currentNames = new Set(prev.map((p) => p.student_name));
+              const newJoined = cloudParts.filter((cp) => !currentNames.has(cp.student_name));
+              if (newJoined.length === 0) return prev;
+
+              try { soundFx.playJoin(); } catch (e) {}
+              const newItems = newJoined.map((cp) => ({
+                id: cp.id,
+                room_id: roomCode,
+                student_name: cp.student_name,
+                avatar_url: cp.avatar_url,
+                score: cp.score || 0,
+                streak: cp.streak || 0,
+                correct_count: 0,
+                wrong_count: 0,
+                history: {},
+              }));
+              return [...prev, ...newItems];
+            });
+          }
+        }
+      } catch (err) {
+        console.warn('Lỗi đọc người chơi từ Supabase:', err);
+      }
+    };
+
+    fetchCloudParticipants();
+    const interval = setInterval(fetchCloudParticipants, 2500);
+    return () => clearInterval(interval);
+  }, [status, roomCode]);
 
   // 2. Quản lý đồng hồ đếm ngược + Phát âm thanh tích tắc hồi hộp (Gợi ý 3)
   useEffect(() => {

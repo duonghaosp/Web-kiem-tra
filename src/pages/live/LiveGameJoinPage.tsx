@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Globe, ArrowRight, Sparkles, User, KeyRound, AlertCircle, Radio, CheckCircle2, BadgeCheck } from 'lucide-react';
-import { isValidActiveRoom, getActiveRooms, ActiveLiveRoom } from '../../lib/liveGameEngine';
+import { checkValidActiveRoom, fetchActiveRooms, ActiveLiveRoom } from '../../lib/liveGameEngine';
 import { getStoredStudents } from '../../data/studentsData';
 
 export const LiveGameJoinPage: React.FC = () => {
@@ -16,6 +16,7 @@ export const LiveGameJoinPage: React.FC = () => {
     const urlPin = searchParams.get('pin');
     if (urlPin) setPin(urlPin);
   }, [searchParams]);
+
   const [nickname, setNickname] = useState<string>(() => {
     if (profile?.full_name) {
       return `${profile.full_name}${profile.class_name ? ` (${profile.class_name})` : ''}`;
@@ -23,22 +24,28 @@ export const LiveGameJoinPage: React.FC = () => {
     return '';
   });
   const [errorMsg, setErrorMsg] = useState<string>('');
-  const [activeRooms, setActiveRooms] = useState<ActiveLiveRoom[]>(() => getActiveRooms());
+  const [isChecking, setIsChecking] = useState<boolean>(false);
+  const [activeRooms, setActiveRooms] = useState<ActiveLiveRoom[]>([]);
 
   useEffect(() => {
-    const handleUpdate = () => {
-      setActiveRooms(getActiveRooms());
+    let isMounted = true;
+    const handleUpdate = async () => {
+      const rooms = await fetchActiveRooms();
+      if (isMounted) setActiveRooms(rooms);
     };
     handleUpdate();
+    const timer = setInterval(handleUpdate, 3500);
     window.addEventListener('storage', handleUpdate);
     window.addEventListener('geo_active_rooms_updated', handleUpdate);
     return () => {
+      isMounted = false;
+      clearInterval(timer);
       window.removeEventListener('storage', handleUpdate);
       window.removeEventListener('geo_active_rooms_updated', handleUpdate);
     };
   }, []);
 
-  const handleJoin = (e: React.FormEvent) => {
+  const handleJoin = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg('');
 
@@ -53,8 +60,11 @@ export const LiveGameJoinPage: React.FC = () => {
       return;
     }
 
-    // 🛑 KIỂM TRA XÁC THỰC MÃ PIN VÀ TRẠNG THÁI PHÒNG ĐẤU THỰC TẾ CỦA CÔ HẢO
-    const validation = isValidActiveRoom(cleanPin);
+    setIsChecking(true);
+    // 🛑 KIỂM TRA XÁC THỰC MÃ PIN VÀ TRẠNG THÁI PHÒNG ĐẤU TRÊN SUPABASE CLOUD & LOCALSTORAGE
+    const validation = await checkValidActiveRoom(cleanPin);
+    setIsChecking(false);
+
     if (!validation.valid) {
       setErrorMsg(validation.error || `Mã PIN ${cleanPin} không tồn tại hoặc phòng chưa được mở!`);
       return;
@@ -187,10 +197,17 @@ export const LiveGameJoinPage: React.FC = () => {
 
           <button
             type="submit"
-            className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 active:scale-95 text-white font-black text-sm sm:text-base shadow-lg transition cursor-pointer"
+            disabled={isChecking}
+            className="w-full flex items-center justify-center gap-2 py-3.5 px-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 disabled:opacity-50 active:scale-95 text-white font-black text-sm sm:text-base shadow-lg transition cursor-pointer"
           >
-            Vào Phòng Thi Ngay
-            <ArrowRight className="w-4 h-4" />
+            {isChecking ? (
+              <span>Đang kết nối phòng đấu...</span>
+            ) : (
+              <>
+                Vào Phòng Thi Ngay
+                <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </button>
         </form>
       </div>

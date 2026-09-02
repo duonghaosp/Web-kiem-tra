@@ -91,17 +91,50 @@ export const KAHOOT_COLORS = [
 ];
 
 /**
- * Bộ phát sự kiện Realtime cục bộ (BroadcastChannel) giúp máy chiếu & điện thoại đồng bộ tức thì
+ * Bộ phát sự kiện Realtime đa kênh (Supabase Realtime Cloud WebSocket + BroadcastChannel cục bộ)
+ * Giúp máy chiếu của Cô Hảo & điện thoại di động của học sinh trên lớp đồng bộ tức thì qua Internet!
  */
 export class LiveGameSync {
   private channel: BroadcastChannel | null = null;
+  private supabaseChannel: any = null;
   private onMessageCallback?: (event: { type: string; payload: any }) => void;
   private storageHandler?: (e: StorageEvent) => void;
   private roomId: string;
+  private isSubscribed: boolean = false;
+  private pendingQueue: Array<{ type: string; payload: any }> = [];
 
   constructor(roomId: string, onMessage?: (event: { type: string; payload: any }) => void) {
     this.roomId = roomId;
     this.onMessageCallback = onMessage;
+
+    // 1. Kênh WebSocket Supabase Realtime Cloud (Kết nối điện thoại học sinh & máy chiếu toàn cầu)
+    if (isSupabaseConfigured) {
+      try {
+        this.supabaseChannel = supabase.channel(`live_arena_${roomId}`, {
+          config: { broadcast: { self: false } },
+        });
+
+        this.supabaseChannel
+          .on('broadcast', { event: 'arena_event' }, (msg: any) => {
+            if (this.onMessageCallback && msg?.payload) {
+              this.onMessageCallback(msg.payload);
+            }
+          })
+          .subscribe((channelStatus: string) => {
+            if (channelStatus === 'SUBSCRIBED') {
+              this.isSubscribed = true;
+              while (this.pendingQueue.length > 0) {
+                const item = this.pendingQueue.shift();
+                if (item) this.sendSupabaseBroadcast(item.type, item.payload);
+              }
+            }
+          });
+      } catch (e) {
+        console.warn('Lỗi khởi tạo kênh Supabase Realtime:', e);
+      }
+    }
+
+    // 2. Kênh BroadcastChannel cục bộ (Hỗ trợ thử nghiệm trên cùng 1 máy tính)
     try {
       this.channel = new BroadcastChannel(`geo_live_${roomId}`);
       this.channel.onmessage = (e) => {
@@ -110,10 +143,10 @@ export class LiveGameSync {
         }
       };
     } catch (e) {
-      console.warn('BroadcastChannel không được hỗ trợ, chuyển sang fallback:', e);
+      console.warn('BroadcastChannel không được hỗ trợ:', e);
     }
 
-    // Lắng nghe sự kiện qua storage để hoạt động giữa các cửa sổ/tab
+    // 3. Fallback qua Storage Event (Giữa các tab trình duyệt)
     this.storageHandler = (e: StorageEvent) => {
       if (e.key && e.key.startsWith(`geo_live_event_${this.roomId}_`) && e.newValue) {
         try {
@@ -127,11 +160,38 @@ export class LiveGameSync {
     window.addEventListener('storage', this.storageHandler);
   }
 
-  broadcast(type: string, payload: any) {
-    if (this.channel) {
-      this.channel.postMessage({ type, payload });
+  private sendSupabaseBroadcast(type: string, payload: any) {
+    if (this.supabaseChannel && this.isSubscribed) {
+      try {
+        this.supabaseChannel.send({
+          type: 'broadcast',
+          event: 'arena_event',
+          payload: { type, payload },
+        });
+      } catch (err) {
+        console.warn('Lỗi gửi qua Supabase channel:', err);
+      }
     }
-    // Ghi vào localStorage để kích hoạt event storage giữa các tab
+  }
+
+  broadcast(type: string, payload: any) {
+    // 1. Phát trực tiếp qua Supabase Cloud cho điện thoại học sinh
+    if (this.supabaseChannel) {
+      if (this.isSubscribed) {
+        this.sendSupabaseBroadcast(type, payload);
+      } else {
+        this.pendingQueue.push({ type, payload });
+      }
+    }
+
+    // 2. Phát qua BroadcastChannel cục bộ
+    if (this.channel) {
+      try {
+        this.channel.postMessage({ type, payload });
+      } catch (e) {}
+    }
+
+    // 3. Ghi vào localStorage kích hoạt sự kiện cục bộ
     try {
       const eventKey = `geo_live_event_${this.roomId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       localStorage.setItem(eventKey, JSON.stringify({ type, payload }));
@@ -142,6 +202,12 @@ export class LiveGameSync {
   }
 
   close() {
+    if (this.supabaseChannel) {
+      try {
+        supabase.removeChannel(this.supabaseChannel);
+        this.supabaseChannel = null;
+      } catch (e) {}
+    }
     if (this.channel) {
       this.channel.close();
       this.channel = null;
@@ -167,29 +233,58 @@ export interface ActiveLiveRoom {
 
 /**
  * Đăng ký phòng đấu trực tiếp khi Giáo viên (Cô Hảo) mở phòng
+ * Tự động ghi vào cả Supabase Cloud DB và LocalStorage
  */
 export function registerActiveRoom(room: Partial<ActiveLiveRoom> & { pin: string }): void {
+  const cleanPin = room.pin.trim().replace(/\s+/g, '');
+  const title = room.title || 'Đấu Trường Đố Vui Địa Lí THCS';
+  const teacherName = room.teacher_name || 'Cô Dương Thu Hảo';
+  const grade = room.grade || 7;
+  const status = room.status || 'lobby';
+  const totalQuestions = room.total_questions || 5;
+
+  // 1. Lưu trữ LocalStorage cục bộ
   try {
     const raw = localStorage.getItem(ACTIVE_ROOMS_KEY);
     const rooms: ActiveLiveRoom[] = raw ? JSON.parse(raw) : [];
-
-    const updatedRooms = rooms.filter((r) => r.pin !== room.pin);
+    const updatedRooms = rooms.filter((r) => r.pin !== cleanPin);
     const newRoom: ActiveLiveRoom = {
-      pin: room.pin,
-      title: room.title || 'Đấu Trường Đố Vui Địa Lí THCS',
-      teacher_name: room.teacher_name || 'Cô Dương Thu Hảo',
-      grade: room.grade || 7,
-      status: room.status || 'lobby',
-      total_questions: room.total_questions || 5,
+      pin: cleanPin,
+      title,
+      teacher_name: teacherName,
+      grade,
+      status,
+      total_questions: totalQuestions,
       created_at: room.created_at || new Date().toISOString(),
       updated_at: Date.now(),
     };
-
     updatedRooms.push(newRoom);
     localStorage.setItem(ACTIVE_ROOMS_KEY, JSON.stringify(updatedRooms));
     window.dispatchEvent(new Event('geo_active_rooms_updated'));
   } catch (e) {
-    console.warn('Lỗi đăng ký phòng đấu:', e);
+    console.warn('Lỗi đăng ký phòng đấu trong LocalStorage:', e);
+  }
+
+  // 2. Đồng bộ lên Supabase Cloud Database để điện thoại học sinh trên toàn quốc có thể tra cứu
+  if (isSupabaseConfigured) {
+    supabase
+      .from('live_game_rooms')
+      .upsert(
+        {
+          room_code: cleanPin,
+          title,
+          teacher_name: teacherName,
+          status,
+          time_per_question: (room as any).time_per_question || 20,
+          current_question_index: (room as any).current_question_index || 0,
+        },
+        { onConflict: 'room_code' }
+      )
+      .then(({ error }) => {
+        if (error) {
+          console.warn('Lỗi đồng bộ phòng đấu lên Supabase Cloud:', error.message);
+        }
+      });
   }
 }
 
@@ -197,20 +292,31 @@ export function registerActiveRoom(room: Partial<ActiveLiveRoom> & { pin: string
  * Xóa phòng đấu khi kết thúc hoặc đóng phòng
  */
 export function removeActiveRoom(pin: string): void {
+  const cleanPin = pin.trim().replace(/\s+/g, '');
   try {
     const raw = localStorage.getItem(ACTIVE_ROOMS_KEY);
-    if (!raw) return;
-    const rooms: ActiveLiveRoom[] = JSON.parse(raw);
-    const updated = rooms.filter((r) => r.pin !== pin);
-    localStorage.setItem(ACTIVE_ROOMS_KEY, JSON.stringify(updated));
-    window.dispatchEvent(new Event('geo_active_rooms_updated'));
+    if (raw) {
+      const rooms: ActiveLiveRoom[] = JSON.parse(raw);
+      const updated = rooms.filter((r) => r.pin !== cleanPin);
+      localStorage.setItem(ACTIVE_ROOMS_KEY, JSON.stringify(updated));
+      window.dispatchEvent(new Event('geo_active_rooms_updated'));
+    }
   } catch (e) {
     console.warn('Lỗi xóa phòng đấu:', e);
+  }
+
+  // Cập nhật trạng thái đã kết thúc trên Supabase Cloud
+  if (isSupabaseConfigured) {
+    supabase
+      .from('live_game_rooms')
+      .update({ status: 'finished' })
+      .eq('room_code', cleanPin)
+      .then(() => {});
   }
 }
 
 /**
- * Lấy danh sách các phòng đấu đang mở hợp lệ
+ * Lấy danh sách các phòng đấu đang mở hợp lệ từ LocalStorage
  */
 export function getActiveRooms(): ActiveLiveRoom[] {
   try {
@@ -218,7 +324,6 @@ export function getActiveRooms(): ActiveLiveRoom[] {
     if (!raw) return [];
     const rooms: ActiveLiveRoom[] = JSON.parse(raw);
     const now = Date.now();
-    // Giữ các phòng trong vòng 6 tiếng gần nhất
     return rooms.filter((r) => now - (r.updated_at || 0) < 6 * 60 * 60 * 1000 && r.status !== 'finished');
   } catch (e) {
     console.warn('Lỗi đọc active rooms:', e);
@@ -227,7 +332,88 @@ export function getActiveRooms(): ActiveLiveRoom[] {
 }
 
 /**
- * Xác thực mã PIN khi học sinh nhập vào
+ * Lấy danh sách các phòng đấu đang mở từ Supabase Cloud (cho điện thoại học sinh)
+ */
+export async function fetchActiveRooms(): Promise<ActiveLiveRoom[]> {
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('live_game_rooms')
+        .select('*')
+        .neq('status', 'finished')
+        .order('created_at', { ascending: false })
+        .limit(5);
+
+      if (!error && data && data.length > 0) {
+        return data.map((r: any) => ({
+          pin: r.room_code,
+          title: r.title || 'Đấu Trường Đố Vui Địa Lí THCS',
+          teacher_name: r.teacher_name || 'Cô Dương Thu Hảo',
+          status: r.status,
+          total_questions: Array.isArray(r.questions_json) && r.questions_json.length > 0 ? r.questions_json.length : 5,
+          created_at: r.created_at,
+          updated_at: new Date(r.created_at).getTime(),
+        }));
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc phòng đấu từ Supabase:', e);
+    }
+  }
+  return getActiveRooms();
+}
+
+/**
+ * Xác thực mã PIN bất đồng bộ - Ưu tiên kiểm tra trên Supabase Cloud DB
+ * Đảm bảo học sinh dùng điện thoại 4G hay máy tính ở nhà đều vào được phòng của Cô Hảo 100%!
+ */
+export async function checkValidActiveRoom(
+  pin: string
+): Promise<{ valid: boolean; room?: ActiveLiveRoom; error?: string }> {
+  const clean = pin.trim().replace(/\s+/g, '');
+  if (!clean || clean.length < 4) {
+    return { valid: false, error: 'Vui lòng nhập đúng mã PIN phòng đấu gồm 6 chữ số!' };
+  }
+
+  // 1. Kiểm tra trực tiếp trên Supabase Cloud (Dành cho điện thoại hoặc thiết bị khác)
+  if (isSupabaseConfigured) {
+    try {
+      const { data, error } = await supabase
+        .from('live_game_rooms')
+        .select('*')
+        .eq('room_code', clean)
+        .maybeSingle();
+
+      if (data) {
+        if (data.status === 'finished') {
+          return {
+            valid: false,
+            error: `⏰ Phòng đấu [${clean}] đã kết thúc. Vui lòng chờ Cô Hảo mở phòng đấu mới!`,
+          };
+        }
+        return {
+          valid: true,
+          room: {
+            pin: data.room_code,
+            title: data.title,
+            teacher_name: data.teacher_name,
+            status: data.status,
+            total_questions: Array.isArray(data.questions_json) && data.questions_json.length > 0 ? data.questions_json.length : 5,
+            created_at: data.created_at,
+            updated_at: new Date(data.created_at).getTime(),
+          },
+        };
+      }
+    } catch (e) {
+      console.warn('Lỗi tra cứu mã PIN trên Supabase:', e);
+    }
+  }
+
+  // 2. Fallback: Kiểm tra LocalStorage (nếu cùng 1 máy tính thử nghiệm)
+  return isValidActiveRoom(clean);
+}
+
+/**
+ * Xác thực mã PIN đồng bộ (Hỗ trợ fallback)
  */
 export function isValidActiveRoom(pin: string): { valid: boolean; room?: ActiveLiveRoom; error?: string } {
   const clean = pin.trim().replace(/\s+/g, '');
@@ -254,3 +440,4 @@ export function isValidActiveRoom(pin: string): { valid: boolean; room?: ActiveL
 
   return { valid: true, room: matched };
 }
+
