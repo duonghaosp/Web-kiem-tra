@@ -144,10 +144,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       // Lấy mật khẩu giáo viên bảo mật đã lưu (mặc định ban đầu là 123456, cô Hảo có thể đổi trong Cài đặt)
-      const storedTeacherPassword = localStorage.getItem('geo_teacher_secret_password') || '123456';
+      let storedTeacherPassword = localStorage.getItem('geo_teacher_secret_password') || '123456';
+      if (isSupabaseConfigured) {
+        try {
+          const { data: settingData } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'teacher_security')
+            .maybeSingle();
+
+          if (settingData?.value?.password) {
+            storedTeacherPassword = settingData.value.password;
+            localStorage.setItem('geo_teacher_secret_password', storedTeacherPassword);
+          }
+        } catch (e) {
+          // Bỏ qua lỗi mạng
+        }
+      }
 
       // 1. Kiểm tra mật khẩu giáo viên: Nếu nhập sai mật khẩu -> Chặn tuyệt đối!
-      if (cleanPassword !== storedTeacherPassword && cleanPassword !== '123456') {
+      if (cleanPassword !== storedTeacherPassword) {
         return {
           error: {
             message: 'Mật khẩu giáo viên không chính xác! Học sinh không có quyền truy cập bàn làm việc giáo viên.',

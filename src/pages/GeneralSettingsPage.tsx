@@ -20,6 +20,10 @@ import {
   FileJson,
   RotateCcw,
   Lock,
+  KeyRound,
+  Eye,
+  EyeOff,
+  AlertCircle,
 } from 'lucide-react';
 import { triggerCelebration } from '../lib/gamification';
 
@@ -57,12 +61,40 @@ export const GeneralSettingsPage: React.FC = () => {
   const [teacherPhone, setTeacherPhone] = useState(
     () => localStorage.getItem('geo_teacher_phone') || ''
   );
-  const [teacherPassword, setTeacherPassword] = useState(
+  const [currentTeacherPassword, setCurrentTeacherPassword] = useState(
     () => localStorage.getItem('geo_teacher_secret_password') || '123456'
   );
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordMsg, setPasswordMsg] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [isUpdatingPassword, setIsUpdatingPassword] = useState(false);
   const [defaultFeedback, setDefaultFeedback] = useState(
     () => localStorage.getItem('geo_default_feedback') || 'Cô khen ngợi tinh thần làm bài chăm chỉ của em!'
   );
+
+  // Tự động tải mật khẩu giáo viên từ Supabase Cloud khi vào trang
+  useEffect(() => {
+    async function loadCloudTeacherSecurity() {
+      if (isSupabaseConfigured) {
+        try {
+          const { data } = await supabase
+            .from('system_settings')
+            .select('value')
+            .eq('key', 'teacher_security')
+            .maybeSingle();
+          if (data?.value?.password) {
+            setCurrentTeacherPassword(data.value.password);
+            localStorage.setItem('geo_teacher_secret_password', data.value.password);
+          }
+        } catch (e) {
+          console.warn('Lỗi tải teacher_security:', e);
+        }
+      }
+    }
+    loadCloudTeacherSecurity();
+  }, []);
 
   // 3. Cấu hình kiểm tra & đánh giá
   const [weakThreshold, setWeakThreshold] = useState<number>(
@@ -145,6 +177,97 @@ export const GeneralSettingsPage: React.FC = () => {
     reader.readAsDataURL(file);
   };
 
+  // Xử lý đổi mật khẩu giáo viên bảo mật
+  const handleChangeTeacherPassword = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    setPasswordMsg(null);
+
+    const trimmedNew = newPassword.trim();
+    const trimmedConfirm = confirmPassword.trim();
+
+    if (!trimmedNew) {
+      setPasswordMsg({ type: 'error', text: 'Cô vui lòng nhập mật khẩu mới!' });
+      return;
+    }
+    if (trimmedNew.length < 4) {
+      setPasswordMsg({ type: 'error', text: 'Mật khẩu mới nên có ít nhất 4 ký tự để đảm bảo an toàn!' });
+      return;
+    }
+    if (trimmedNew !== trimmedConfirm) {
+      setPasswordMsg({
+        type: 'error',
+        text: 'Mật khẩu mới và mật khẩu xác nhận chưa khớp nhau. Cô vui lòng kiểm tra lại!',
+      });
+      return;
+    }
+
+    setIsUpdatingPassword(true);
+    try {
+      // 1. Lưu vào LocalStorage
+      localStorage.setItem('geo_teacher_secret_password', trimmedNew);
+      setCurrentTeacherPassword(trimmedNew);
+
+      // 2. Đồng bộ lên Supabase Cloud để có hiệu lực trên mọi thiết bị
+      if (isSupabaseConfigured) {
+        try {
+          await supabase.from('system_settings').upsert({
+            key: 'teacher_security',
+            value: {
+              password: trimmedNew,
+              updated_at: new Date().toISOString(),
+              teacher_name: teacherName || 'Dương Thu Hảo',
+            },
+          });
+        } catch (dbErr) {
+          console.warn('Lỗi lưu mật khẩu lên Supabase:', dbErr);
+        }
+      }
+
+      setNewPassword('');
+      setConfirmPassword('');
+      setPasswordMsg({
+        type: 'success',
+        text: `Đã đổi mật khẩu thành công! Mật khẩu mới của cô là: "${trimmedNew}". Lần sau cô dùng mật khẩu này để đăng nhập nhé!`,
+      });
+      triggerCelebration();
+    } catch (err: any) {
+      setPasswordMsg({ type: 'error', text: 'Đã xảy ra lỗi khi đổi mật khẩu, cô thử lại nhé!' });
+    } finally {
+      setIsUpdatingPassword(false);
+    }
+  };
+
+  // Khôi phục mật khẩu giáo viên về mặc định ban đầu (123456)
+  const handleResetDefaultPassword = async () => {
+    if (!window.confirm('Cô có chắc chắn muốn đặt lại mật khẩu giáo viên về mặc định ban đầu là "123456" không?')) {
+      return;
+    }
+    const defaultPwd = '123456';
+    localStorage.setItem('geo_teacher_secret_password', defaultPwd);
+    setCurrentTeacherPassword(defaultPwd);
+    if (isSupabaseConfigured) {
+      try {
+        await supabase.from('system_settings').upsert({
+          key: 'teacher_security',
+          value: {
+            password: defaultPwd,
+            updated_at: new Date().toISOString(),
+            teacher_name: teacherName || 'Dương Thu Hảo',
+          },
+        });
+      } catch (e) {
+        console.warn('Lỗi Supabase:', e);
+      }
+    }
+    setNewPassword('');
+    setConfirmPassword('');
+    setPasswordMsg({
+      type: 'success',
+      text: 'Đã khôi phục mật khẩu giáo viên về mặc định ban đầu: "123456"!',
+    });
+    triggerCelebration();
+  };
+
   // Lưu toàn bộ cấu hình hệ thống
   const handleSaveAll = async () => {
     setIsSaving(true);
@@ -156,7 +279,7 @@ export const GeneralSettingsPage: React.FC = () => {
       localStorage.setItem('geo_teacher_title', teacherTitle.trim());
       localStorage.setItem('geo_teacher_email', teacherEmail.trim());
       localStorage.setItem('geo_teacher_phone', teacherPhone.trim());
-      localStorage.setItem('geo_teacher_secret_password', teacherPassword.trim());
+      localStorage.setItem('geo_teacher_secret_password', currentTeacherPassword.trim());
       localStorage.setItem('geo_default_feedback', defaultFeedback.trim());
       localStorage.setItem('geo_weak_threshold', String(weakThreshold));
       localStorage.setItem('geo_allow_late', String(allowLateSubmission));
@@ -622,22 +745,185 @@ export const GeneralSettingsPage: React.FC = () => {
                 />
               </div>
 
-              <div className="md:col-span-2 p-4 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-2">
-                <label className="block text-xs font-bold text-amber-950 flex items-center gap-1.5">
-                  <Lock className="w-4 h-4 text-amber-700" />
-                  Mật Khẩu Đăng Nhập Giáo Viên (Bảo Mật Bàn Làm Việc):
-                </label>
-                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
-                  <input
-                    type="password"
-                    value={teacherPassword}
-                    onChange={(e) => setTeacherPassword(e.target.value)}
-                    placeholder="Nhập mật khẩu bí mật của cô..."
-                    className="w-full sm:w-64 px-4 py-2.5 rounded-xl border border-amber-300 text-xs sm:text-sm font-bold text-slate-900 bg-white focus:ring-2 focus:ring-amber-500"
-                  />
-                  <span className="text-[11px] text-amber-800 leading-relaxed">
-                    💡 Đây là mật khẩu bí mật của Cô Hảo để truy cập bàn làm việc, quản lý đề thi và chấm điểm. Học sinh không biết mật khẩu này sẽ tuyệt đối không thể đăng nhập vào được.
-                  </span>
+              {/* KHỐI ĐỔI MẬT KHẨU GIÁO VIÊN BẢO MẬT */}
+              <div className="md:col-span-2 bg-gradient-to-br from-amber-50/90 via-orange-50/40 to-amber-50/80 border-2 border-amber-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-200/80">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">
+                      <KeyRound className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm sm:text-base font-black text-slate-900 flex items-center gap-2">
+                        Bảo Mật Bàn Làm Việc & Đổi Mật Khẩu Giáo Viên
+                      </h3>
+                      <p className="text-xs text-amber-900/80 font-medium">
+                        Mật khẩu này bảo vệ toàn bộ đề thi, ngân hàng câu hỏi và bảng điểm học sinh của Cô Hảo.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 bg-white/90 px-3.5 py-1.5 rounded-xl border border-amber-200 shadow-2xs self-start sm:self-auto">
+                    <span className="text-[11px] font-bold text-slate-500">Mật khẩu đang dùng:</span>
+                    <code className="text-xs font-black text-amber-700 font-mono tracking-wider">
+                      {currentTeacherPassword}
+                    </code>
+                  </div>
+                </div>
+
+                {passwordMsg && (
+                  <div
+                    className={`p-3.5 rounded-2xl text-xs font-bold flex items-center gap-2 border ${
+                      passwordMsg.type === 'success'
+                        ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                        : 'bg-red-50 text-red-800 border-red-200'
+                    }`}
+                  >
+                    {passwordMsg.type === 'success' ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                    ) : (
+                      <AlertCircle className="w-4 h-4 text-red-600 shrink-0" />
+                    )}
+                    <span>{passwordMsg.text}</span>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+                  {/* Ô Nhập Mật Khẩu Mới */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                      Nhập Mật Khẩu Mới Của Cô:
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showNewPassword ? 'text' : 'password'}
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="VD: cohao2026 hoặc mật khẩu riêng..."
+                        className="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowNewPassword(!showNewPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+                      >
+                        {showNewPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+
+                    {/* Thanh đo độ mạnh mật khẩu */}
+                    {newPassword && (
+                      <div className="mt-2 flex items-center gap-2 text-[11px]">
+                        <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden flex">
+                          <div
+                            className={`h-full transition-all duration-300 ${
+                              newPassword.length < 4
+                                ? 'w-1/3 bg-red-500'
+                                : newPassword.length < 8
+                                ? 'w-2/3 bg-amber-500'
+                                : 'w-full bg-emerald-500'
+                            }`}
+                          />
+                        </div>
+                        <span
+                          className={`font-bold ${
+                            newPassword.length < 4
+                              ? 'text-red-600'
+                              : newPassword.length < 8
+                              ? 'text-amber-600'
+                              : 'text-emerald-600'
+                          }`}
+                        >
+                          {newPassword.length < 4
+                            ? 'Mật khẩu ngắn'
+                            : newPassword.length < 8
+                            ? 'Độ an toàn vừa'
+                            : 'Rất an toàn'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Ô Xác Nhận Lại Mật Khẩu Mới */}
+                  <div>
+                    <label className="block text-xs font-bold text-slate-800 mb-1.5">
+                      Xác Nhận Lại Mật Khẩu Mới:
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showConfirmPassword ? 'text' : 'password'}
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Gõ lại chính xác mật khẩu mới..."
+                        className="w-full pl-3.5 pr-10 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-bold text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer p-1"
+                      >
+                        {showConfirmPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                    </div>
+
+                    {confirmPassword && (
+                      <div className="mt-2 text-[11px] font-bold">
+                        {newPassword === confirmPassword ? (
+                          <span className="text-emerald-600 flex items-center gap-1">
+                            <CheckCircle2 className="w-3.5 h-3.5" /> Mật khẩu xác nhận trùng khớp!
+                          </span>
+                        ) : (
+                          <span className="text-red-600 flex items-center gap-1">
+                            <AlertCircle className="w-3.5 h-3.5" /> Chưa trùng khớp với ô trên!
+                          </span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Các nút hành động */}
+                <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={isUpdatingPassword || !newPassword || newPassword !== confirmPassword}
+                      onClick={handleChangeTeacherPassword}
+                      className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-amber-600 hover:bg-amber-700 active:scale-95 text-white font-bold text-xs shadow-md shadow-amber-600/20 transition disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {isUpdatingPassword ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" /> Đang cập nhật...
+                        </>
+                      ) : (
+                        <>
+                          <Lock className="w-4 h-4" /> Lưu Mật Khẩu Mới
+                        </>
+                      )}
+                    </button>
+
+                    {(newPassword || confirmPassword) && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewPassword('');
+                          setConfirmPassword('');
+                          setPasswordMsg(null);
+                        }}
+                        className="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-bold text-slate-600 transition cursor-pointer"
+                      >
+                        Hủy
+                      </button>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleResetDefaultPassword}
+                    className="inline-flex items-center gap-1.5 text-xs text-slate-500 hover:text-amber-800 font-bold hover:underline cursor-pointer py-1"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Đặt lại mật khẩu ban đầu (123456)</span>
+                  </button>
                 </div>
               </div>
             </div>
