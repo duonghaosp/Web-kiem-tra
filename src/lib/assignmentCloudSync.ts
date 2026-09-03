@@ -92,21 +92,7 @@ export async function fetchAssignmentsFromCloud(): Promise<Assignment[]> {
 
 // 3. Tìm 1 bài kiểm tra theo ID (Hỗ trợ học sinh quét QR từ điện thoại bất kỳ)
 export async function fetchAssignmentById(id: string): Promise<Assignment | null> {
-  // 1. Thử tìm trong LocalStorage
-  try {
-    const raw = localStorage.getItem(LOCAL_ASSIGNMENTS_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed)) {
-        const found = parsed.find((a: any) => String(a.id) === String(id));
-        if (found) return found;
-      }
-    }
-  } catch (e) {
-    console.warn('Lỗi đọc local assignment:', e);
-  }
-
-  // 2. Tải trực tiếp từ Supabase Cloud
+  // 1. Luôn tải trực tiếp từ Supabase Cloud để đảm bảo học sinh trên điện thoại luôn nhận đề mới nhất từ giáo viên!
   if (isSupabaseConfigured) {
     try {
       const { data: cloudRow } = await supabase
@@ -118,13 +104,12 @@ export async function fetchAssignmentById(id: string): Promise<Assignment | null
       if (cloudRow?.value?.assignments && Array.isArray(cloudRow.value.assignments)) {
         const found = cloudRow.value.assignments.find((a: any) => String(a.id) === String(id));
         if (found) {
-          // Lưu vào local của điện thoại để lần sau truy cập nhanh
+          // Ghi đè cập nhật bản mới nhất vào LocalStorage của điện thoại để xóa sạch bản cũ
           try {
             const raw = localStorage.getItem(LOCAL_ASSIGNMENTS_KEY);
-            const currentList = raw ? JSON.parse(raw) : [];
-            if (!currentList.some((x: any) => String(x.id) === String(found.id))) {
-              localStorage.setItem(LOCAL_ASSIGNMENTS_KEY, JSON.stringify([found, ...currentList]));
-            }
+            const currentList: Assignment[] = raw ? JSON.parse(raw) : [];
+            const filtered = currentList.filter((x: any) => String(x.id) !== String(found.id));
+            localStorage.setItem(LOCAL_ASSIGNMENTS_KEY, JSON.stringify([found, ...filtered]));
           } catch (e) {}
           return found;
         }
@@ -132,6 +117,20 @@ export async function fetchAssignmentById(id: string): Promise<Assignment | null
     } catch (err) {
       console.warn('Lỗi tải assignment từ cloud:', err);
     }
+  }
+
+  // 2. Dự phòng: Nếu mất kết nối mạng hoặc không có Cloud, đọc từ LocalStorage
+  try {
+    const raw = localStorage.getItem(LOCAL_ASSIGNMENTS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        const found = parsed.find((a: any) => String(a.id) === String(id));
+        if (found) return found;
+      }
+    }
+  } catch (e) {
+    console.warn('Lỗi đọc local assignment:', e);
   }
 
   return null;

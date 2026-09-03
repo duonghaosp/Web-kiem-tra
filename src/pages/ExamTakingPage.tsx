@@ -32,78 +32,6 @@ import { fetchStudentsFromCloud } from '../lib/studentCloudSync';
 import { getStoredStudents, INITIAL_CLASSES } from '../data/studentsData';
 import { normalizeQuestion, normalizeQuestionList } from '../lib/questionUtils';
 
-// Đề thi mẫu chuẩn hóa 6 dạng câu hỏi cho học sinh làm bài
-const SAMPLE_EXAM_QUESTIONS: Question[] = [
-  {
-    id: 'q_take_1',
-    grade: 6,
-    type: 'single_choice',
-    title: 'Vị trí địa lí Việt Nam',
-    content_json: {
-      question: 'Việt Nam nằm ở rìa phía đông của bán đảo Trung Ấn, tiếp giáp với biển nào sau đây?',
-      options: ['Biển Đông', 'Biển Nhật Bản', 'Biển Đỏ', 'Biển Ban-tích'],
-    },
-    correct_answer_json: { correct_index: 0 },
-    explanation: 'Việt Nam tiếp giáp Biển Đông rộng lớn ở phía đông và đông nam.',
-    points: 2.0,
-  },
-  {
-    id: 'q_take_2',
-    grade: 6,
-    type: 'single_choice',
-    title: 'Đố vui thơ lục bát về địa danh',
-    content_json: {
-      question: 'Câu thơ đố vui Địa lí:\n"Bình Định có núi Vọng Phu\nCó đầm Thị Nại, có cù lao Xanh"\n\nĐầm Thị Nại là thắng cảnh nổi tiếng của tỉnh nào?',
-      options: ['Bình Định', 'Phú Yên', 'Quảng Nam', 'Khánh Hòa'],
-    },
-    correct_answer_json: { correct_index: 0 },
-    explanation: 'Đầm Thị Nại thuộc tỉnh Bình Định.',
-    points: 2.0,
-  },
-  {
-    id: 'q_take_3',
-    grade: 6,
-    type: 'true_false',
-    title: 'Đặc điểm tự nhiên nước ta',
-    content_json: {
-      question: 'Xét tính Đúng / Sai của các nhận định địa hình nước ta:',
-      statements: [
-        { id: 'st1', text: 'Đồi núi chiếm khoảng 3/4 diện tích lãnh thổ đất liền nước ta.' },
-        { id: 'st2', text: 'Đồng bằng chiếm hơn một nửa diện tích nước ta.' },
-      ],
-    },
-    correct_answer_json: { tf_answers: { st1: true, st2: false } },
-    explanation: 'Đồi núi chiếm 3/4 diện tích, đồng bằng chỉ chiếm 1/4 diện tích.',
-    points: 2.0,
-  },
-  {
-    id: 'q_take_4',
-    grade: 6,
-    type: 'fill_blank',
-    title: 'Điền tên đỉnh núi',
-    content_json: {
-      template: 'Đỉnh núi cao nhất Việt Nam là đỉnh [blank_1], nằm trên dãy núi Hoàng Liên Sơn hùng vĩ.',
-      blanks: [{ id: 'blank_1', placeholder: 'Điền tên đỉnh núi' }],
-    },
-    correct_answer_json: { blank_answers: { blank_1: ['Phan-xi-păng', 'Fansipan', 'Phanxipang'] } },
-    explanation: 'Fansipan cao 3.143m.',
-    points: 2.0,
-  },
-  {
-    id: 'q_take_5',
-    grade: 6,
-    type: 'essay',
-    title: 'Thuận lợi của vị trí địa lí',
-    content_json: {
-      prompt: 'Em hãy nêu 2 thuận lợi cơ bản do vị trí địa lí mang lại cho thiên nhiên nước ta.',
-      sample_answer: '1. Khí hậu nhiệt đới ẩm dồi dào ánh sáng và nước mưa;\n2. Tài nguyên sinh vật phong phú, đa dạng.',
-    },
-    correct_answer_json: { essay_sample: 'Học sinh nêu đúng 2 thuận lợi về khí hậu và sinh vật.' },
-    explanation: 'Vị trí địa lí quy định tính chất nhiệt đới ẩm gió mùa của thiên nhiên Việt Nam.',
-    points: 2.0,
-  },
-];
-
 export const ExamTakingPage: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -214,13 +142,14 @@ export const ExamTakingPage: React.FC = () => {
         setLoadingAssignment(false);
         return;
       }
-      if (!currentAssignment) {
-        setLoadingAssignment(true);
-      }
+      setLoadingAssignment(true);
       const asg = await fetchAssignmentById(id);
       if (isMounted) {
         if (asg) {
           setCurrentAssignment(asg);
+          if (asg.questions && asg.questions.length > 0) {
+            setQuestions(normalizeQuestionList(asg.questions));
+          }
           if (!searchParams.get('grade') && asg.grade) {
             setInputGrade(asg.grade);
           }
@@ -256,7 +185,7 @@ export const ExamTakingPage: React.FC = () => {
     if (currentAssignment && currentAssignment.questions && currentAssignment.questions.length > 0) {
       return normalizeQuestionList(currentAssignment.questions);
     }
-    return normalizeQuestionList(SAMPLE_EXAM_QUESTIONS);
+    return [];
   });
 
   const [currentQIndex, setCurrentQIndex] = useState<number>(0);
@@ -269,8 +198,12 @@ export const ExamTakingPage: React.FC = () => {
 
   // Cập nhật câu hỏi và thời gian khi assignment được nạp xong từ Cloud
   useEffect(() => {
-    if (currentAssignment && currentAssignment.questions && currentAssignment.questions.length > 0) {
-      setQuestions(normalizeQuestionList(currentAssignment.questions));
+    if (currentAssignment) {
+      if (currentAssignment.questions && currentAssignment.questions.length > 0) {
+        setQuestions(normalizeQuestionList(currentAssignment.questions));
+      } else {
+        setQuestions([]);
+      }
       const totalSecs = (currentAssignment.duration_minutes || 15) * 60;
       setDurationSeconds(totalSecs);
       setTimeLeft(totalSecs);
@@ -508,6 +441,39 @@ export const ExamTakingPage: React.FC = () => {
             </button>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // --- MÀN HÌNH CHỜ TẢI ĐỀ THI TỪ HỆ THỐNG CLOUD ---
+  if (loadingAssignment && !currentAssignment) {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center space-y-4 animate-in fade-in">
+        <div className="w-12 h-12 border-4 border-ocean-200 border-t-ocean-600 rounded-full animate-spin" />
+        <h3 className="text-base font-bold text-slate-800">Đang tải đề thi từ hệ thống...</h3>
+        <p className="text-xs text-slate-500">Vui lòng đợi trong giây lát để hệ thống nạp chính xác đề thi từ giáo viên.</p>
+      </div>
+    );
+  }
+
+  // --- MÀN HÌNH BÁO LỖI NẾU KHÔNG TÌM THẤY BÀI KIỂM TRA ---
+  if (!loadingAssignment && !currentAssignment) {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center space-y-4 animate-in fade-in">
+        <div className="w-14 h-14 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center">
+          <AlertCircle className="w-8 h-8" />
+        </div>
+        <h3 className="text-base font-bold text-slate-800">Không tìm thấy bài kiểm tra này</h3>
+        <p className="text-xs text-slate-500 max-w-sm">
+          Bài kiểm tra có thể đã bị xóa hoặc đường link không chính xác. Cô hoặc các em vui lòng kiểm tra lại nhé!
+        </p>
+        <button
+          type="button"
+          onClick={() => navigate('/')}
+          className="px-4 py-2 bg-ocean-600 hover:bg-ocean-700 text-white rounded-xl text-xs font-bold transition"
+        >
+          Trở về Trang chủ
+        </button>
       </div>
     );
   }
@@ -800,6 +766,31 @@ export const ExamTakingPage: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
+    );
+  }
+
+  // Nếu đã đăng nhập nhưng đề thi không có câu hỏi nào
+  if (questions.length === 0) {
+    return (
+      <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center space-y-4 animate-in fade-in">
+        <div className="w-14 h-14 bg-amber-50 text-amber-600 rounded-2xl flex items-center justify-center">
+          <AlertCircle className="w-8 h-8" />
+        </div>
+        <h3 className="text-base font-bold text-slate-800">Bài kiểm tra chưa có câu hỏi</h3>
+        <p className="text-xs text-slate-500 max-w-sm">
+          Bài kiểm tra "{currentAssignment?.title}" hiện chưa có câu hỏi nào. Cô vui lòng kiểm tra lại trong mục Quản lý Đề thi nhé!
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setExamStudent(null);
+            navigate('/');
+          }}
+          className="px-4 py-2 bg-ocean-600 hover:bg-ocean-700 text-white rounded-xl text-xs font-bold transition"
+        >
+          Trở về Trang chủ
+        </button>
       </div>
     );
   }
