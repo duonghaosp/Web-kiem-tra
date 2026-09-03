@@ -167,6 +167,49 @@ export const INITIAL_QUESTIONS: Question[] = [
 
   // KHỐI 7
   {
+    id: 'q_g7_b3_1',
+    grade: 7,
+    lesson_id: 'g7_b3',
+    category: 'Bài 3: Khai thác, sử dụng và bảo vệ thiên nhiên ở châu Âu',
+    type: 'single_choice',
+    title: 'Biện pháp bảo vệ môi trường không khí ở châu Âu',
+    content_json: {
+      question: 'Để bảo vệ môi trường không khí, các quốc gia châu Âu đã và đang thực hiện giải pháp quan trọng nào sau đây?',
+      options: [
+        'Đẩy mạnh phát triển năng lượng tái tạo và kiểm soát lượng khí thải carbon',
+        'Tăng cường khai thác và sử dụng than đá, dầu mỏ trong công nghiệp',
+        'Ngừng hoàn toàn các hoạt động sản xuất công nghiệp và giao thông',
+        'Chuyển toàn bộ các nhà máy nhiệt điện về vùng nông thôn',
+      ],
+    },
+    correct_answer_json: { correct_index: 0 },
+    explanation: 'Các nước châu Âu đẩy mạnh ứng dụng năng lượng sạch (gió, mặt trời), đánh thuế các-bon và giảm phát thải khí nhà kính để bảo vệ bầu không khí trong lành.',
+    points: 1.0,
+    tags: ['Bảo vệ môi trường', 'Khối 7', 'Châu Âu'],
+  },
+  {
+    id: 'q_g7_b3_2',
+    grade: 7,
+    lesson_id: 'g7_b3',
+    category: 'Bài 3: Khai thác, sử dụng và bảo vệ thiên nhiên ở châu Âu',
+    type: 'true_false',
+    title: 'Đúng / Sai về bảo vệ môi trường nước và rừng ở châu Âu',
+    content_json: {
+      question: 'Xét tính Đúng / Sai của các nhận định về việc khai thác và bảo vệ thiên nhiên ở châu Âu sau:',
+      statements: [
+        { id: 'st1', text: 'Châu Âu kiểm soát nghiêm ngặt nước thải sinh hoạt và công nghiệp trước khi đổ ra sông biển.' },
+        { id: 'st2', text: 'Châu Âu đẩy mạnh trồng rừng và mở rộng diện tích các khu bảo tồn thiên nhiên.' },
+        { id: 'st3', text: 'Châu Âu cho phép xả thẳng chất thải công nghiệp chưa qua xử lí ra các con sông quốc tế.' },
+      ],
+    },
+    correct_answer_json: {
+      tf_answers: { st1: true, st2: true, st3: false },
+    },
+    explanation: 'Châu Âu có luật bảo vệ môi trường rất khắt khe, nghiêm cấm xả thải chưa qua xử lí ra nguồn nước.',
+    points: 1.5,
+    tags: ['Bảo vệ môi trường', 'Khối 7', 'Châu Âu'],
+  },
+  {
     id: 'q4',
     grade: 7,
     lesson_id: 'g7_b4',

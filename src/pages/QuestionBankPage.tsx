@@ -44,6 +44,7 @@ import { LessonItem, getStoredLessons, saveStoredLessons } from '../data/curricu
 import { getStoredQuestions, saveStoredQuestions } from '../data/questionBank';
 import { triggerCelebration } from '../lib/gamification';
 import { playSoftClick } from '../utils/soundEffects';
+import { saveAssignmentsToCloud } from '../lib/assignmentCloudSync';
 
 // Dữ liệu câu hỏi mẫu chuẩn chương trình Địa lí THCS GDPT 2018
 const INITIAL_QUESTIONS: Question[] = [
@@ -672,7 +673,7 @@ export const QuestionBankPage: React.FC = () => {
     .toFixed(1);
 
   // XÁC NHẬN TẠO ĐỀ KIỂM TRA TỪ CÁC CÂU HỎI ĐÃ CHỌN
-  const handleConfirmCreateExam = (e: React.FormEvent) => {
+  const handleConfirmCreateExam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedQuestionIds.length === 0) {
       alert('Cô hãy tích chọn ít nhất 1 câu hỏi để tạo đề kiểm tra nhé!');
@@ -683,6 +684,8 @@ export const QuestionBankPage: React.FC = () => {
       return;
     }
 
+    const calcTotalPoints = Number(totalSelectedPoints) || selectedQuestions.reduce((sum, q) => sum + (q.points || 1.0), 0);
+
     const newAssignment: Assignment = {
       id: 'asg_' + Date.now(),
       exam_id: 'ex_' + Date.now(),
@@ -692,25 +695,35 @@ export const QuestionBankPage: React.FC = () => {
       start_time: new Date().toISOString(),
       deadline: examDeadline,
       allow_late: examAllowLate,
+      grade: selectedGrade,
+      category: examDuration <= 15 ? 'Kiểm tra 15 phút' : 'Kiểm tra',
+      duration_minutes: examDuration,
+      questions: selectedQuestions,
+      questions_count: selectedQuestions.length,
+      total_points: calcTotalPoints,
       submissions_count: 0,
       total_students: targetClasses.length * 35,
     };
 
-    // Lưu vào LocalStorage
+    // 1. Lưu vào LocalStorage
+    let updatedAsgs = [newAssignment];
     try {
       const currentAsgs = JSON.parse(localStorage.getItem('geo_assignments') || '[]');
-      const updatedAsgs = [newAssignment, ...currentAsgs];
+      updatedAsgs = [newAssignment, ...currentAsgs];
       localStorage.setItem('geo_assignments', JSON.stringify(updatedAsgs));
     } catch (err) {
       console.warn('Lỗi lưu đề kiểm tra:', err);
     }
+
+    // 2. Tự động đồng bộ lên Supabase Cloud để học sinh nhận ngay
+    await saveAssignmentsToCloud(updatedAsgs);
 
     // Hiệu ứng ăn mừng
     triggerCelebration();
     setIsCreateExamModalOpen(false);
     setSelectedQuestionIds([]);
 
-    alert(`Tạo đề kiểm tra thành công từ ${selectedQuestions.length} câu hỏi đã chọn! Hệ thống sẽ đưa cô sang trang Quản lý Giao Bài.`);
+    alert(`🎉 Tạo đề kiểm tra thành công từ ${selectedQuestions.length} câu hỏi đã chọn cho các lớp: ${targetClasses.join(', ')}!\nTổng điểm: ${calcTotalPoints}đ • Thời gian: ${examDuration} phút.`);
     navigate('/assignments');
   };
 

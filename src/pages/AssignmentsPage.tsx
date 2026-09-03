@@ -684,9 +684,15 @@ export const AssignmentsPage: React.FC = () => {
         qList = foundTpl.questions;
       }
     }
-    if (qList.length === 0) {
-      const gradeQ = allQuestions.filter((q) => q.grade === (asg.grade || 6));
-      qList = gradeQ.length > 0 ? gradeQ.slice(0, asg.questions_count || 10) : allQuestions.slice(0, asg.questions_count || 10);
+    // Nếu đề chưa có mảng câu hỏi: Thử tìm đúng các câu hỏi thuộc bài học theo tiêu đề đề thi
+    if (qList.length === 0 && asg.title) {
+      const matched = allQuestions.filter((q) => {
+        if (asg.grade && q.grade !== asg.grade) return false;
+        return (q.category && asg.title.includes(q.category)) || (q.lesson_id && asg.title.includes(q.lesson_id));
+      });
+      if (matched.length > 0) {
+        qList = matched.slice(0, asg.questions_count || matched.length);
+      }
     }
     setPreviewQuestions(qList);
     setPreviewAssignment(asg);
