@@ -1,4 +1,4 @@
-﻿// Tiện ích phát âm thanh tương tác êm dịu (Sử dụng Web Audio API tích hợp sẵn của trình duyệt)
+// Tiện ích phát âm thanh tương tác êm dịu (Sử dụng Web Audio API tích hợp sẵn của trình duyệt)
 // Không cần tải file mp3 bên ngoài, tự động tổng hợp sóng âm ấm áp, mượt mà và cực kỳ nhẹ.
 
 let audioCtx: AudioContext | null = null;
@@ -87,3 +87,42 @@ export function playSwitchTab(): void {
     console.debug('Audio not supported', err);
   }
 }
+
+/**
+ * Chuông thông báo học sinh vừa nộp bài (Âm thanh trong trẻo, êm dịu, ấm áp)
+ * Hợp âm E Major (Mi trưởng): E5 -> G#5 -> B5 -> E6
+ */
+export function playSubmissionNotificationSound(): void {
+  if (!isSoundEnabled()) return;
+  try {
+    const ctx = getAudioContext();
+    if (!ctx) return;
+
+    const notes = [
+      { freq: 659.25, time: 0.0, dur: 0.35, gain: 0.12 }, // E5
+      { freq: 830.61, time: 0.09, dur: 0.35, gain: 0.14 }, // G#5
+      { freq: 987.77, time: 0.18, dur: 0.4, gain: 0.15 }, // B5
+      { freq: 1318.51, time: 0.27, dur: 0.65, gain: 0.18 }, // E6
+    ];
+
+    notes.forEach((n) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(n.freq, ctx.currentTime + n.time);
+
+      gain.gain.setValueAtTime(n.gain, ctx.currentTime + n.time);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + n.time + n.dur);
+
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+
+      osc.start(ctx.currentTime + n.time);
+      osc.stop(ctx.currentTime + n.time + n.dur);
+    });
+  } catch (err) {
+    console.debug('Audio not supported or blocked by policy', err);
+  }
+}
+

@@ -33,6 +33,8 @@ import {
   Eye,
   PauseCircle,
   PlayCircle,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { Assignment, TargetType, Question, QuestionType } from '../types/database';
 import { getStoredLessons, LessonItem } from '../data/curriculum';
@@ -50,6 +52,7 @@ import { AssignmentPreviewModal } from '../components/assignments/AssignmentPrev
 import { DeleteAssignmentWarningModal } from '../components/assignments/DeleteAssignmentWarningModal';
 import { AssignmentTrashModal } from '../components/assignments/AssignmentTrashModal';
 import { saveAssignmentsToCloud, fetchAssignmentsFromCloud } from '../lib/assignmentCloudSync';
+import { playSubmissionNotificationSound, isSoundEnabled, toggleSoundEnabled } from '../utils/soundEffects';
 
 // Các hình thức đánh giá kiểm tra chuẩn theo Bộ Giáo dục & Đào tạo
 interface AssessmentCategory {
@@ -157,6 +160,7 @@ export const AssignmentsPage: React.FC = () => {
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [qrModalAssignment, setQrModalAssignment] = useState<Assignment | null>(null);
+  const [soundActive, setSoundActive] = useState<boolean>(() => isSoundEnabled());
 
   // Modal Xem lại đề thi đã giao
   const [previewAssignment, setPreviewAssignment] = useState<Assignment | null>(null);
@@ -728,6 +732,45 @@ export const AssignmentsPage: React.FC = () => {
               </span>
             )}
           </button>
+
+          {/* Nút Chuông Báo Nộp Bài (Gợi ý 3 - Cô Hảo yêu cầu) */}
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-2xl p-1 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => {
+                const next = toggleSoundEnabled();
+                setSoundActive(next);
+                if (next) playSubmissionNotificationSound();
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                soundActive
+                  ? 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+              }`}
+              title="Bật/Tắt chuông báo khi học sinh nộp bài"
+            >
+              {soundActive ? (
+                <>
+                  <Volume2 className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                  <span>Chuông Báo: BẬT</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Chuông Báo: TẮT</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => playSubmissionNotificationSound()}
+              className="px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition cursor-pointer"
+              title="Bấm để nghe thử tiếng chuông báo khi học sinh nộp bài"
+            >
+              🔊 Thử chuông
+            </button>
+          </div>
 
           <button
             type="button"

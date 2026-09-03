@@ -24,6 +24,7 @@ import { GeneralSettingsPage } from './pages/GeneralSettingsPage';
 import { LiveGameHostPage } from './pages/live/LiveGameHostPage';
 import { LiveGameJoinPage } from './pages/live/LiveGameJoinPage';
 import { LiveGamePlayerPage } from './pages/live/LiveGamePlayerPage';
+import { TeacherSubmissionLiveAlert } from './components/teacher/TeacherSubmissionLiveAlert';
 
 // Bộ bảo vệ phân quyền: Khóa tuyệt đối các trang quản trị/giáo viên đối với học sinh
 const TeacherRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -52,6 +53,8 @@ const MainLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
           </main>
         </div>
         <Footer />
+        {/* Chuông & Thông báo nộp bài thời gian thực dành cho bàn làm việc Giáo viên */}
+        <TeacherSubmissionLiveAlert />
       </div>
     </div>
   );

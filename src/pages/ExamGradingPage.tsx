@@ -28,13 +28,15 @@ import {
   Trash2,
   Eraser,
   RotateCcw,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import { StudentResult, Question } from '../types/database';
 import { LatexRenderer } from '../components/common/LatexRenderer';
 import { triggerCelebration } from '../lib/gamification';
 import { BadgeList } from '../components/common/BadgeList';
 import { getStudentBadges, toggleBadgeForStudent } from '../data/badgeService';
-import { playSoftClick } from '../utils/soundEffects';
+import { playSoftClick, playSubmissionNotificationSound, isSoundEnabled, toggleSoundEnabled } from '../utils/soundEffects';
 import { fetchStudentSubmissionsFromCloud, fetchAssignmentsFromCloud } from '../lib/assignmentCloudSync';
 
 // Danh sách bài nộp mẫu của học sinh (Rỗng ban đầu khi giáo viên chưa giao đề thi)
@@ -210,6 +212,7 @@ export const ExamGradingPage: React.FC = () => {
   };
 
   const [selectedSubmission, setSelectedSubmission] = useState<any | null>(null);
+  const [soundActive, setSoundActive] = useState<boolean>(() => isSoundEnabled());
 
   // Tab phân loại: 'pending' (Mặc định - Chỉ hiện bài chưa nhận xét), 'graded' (Đã nhận xét xong), 'all' (Tất cả)
   const [activeTab, setActiveTab] = useState<'pending' | 'graded' | 'all'>('pending');
@@ -593,6 +596,45 @@ export const ExamGradingPage: React.FC = () => {
               <span>Dọn Dẹp {testSubmissionsCount} Bài Thi Thử 🧪</span>
             </button>
           )}
+
+          {/* Nút Chuông Báo Nộp Bài (Gợi ý 3 - Cô Hảo yêu cầu) */}
+          <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-2xl p-1 shadow-2xs">
+            <button
+              type="button"
+              onClick={() => {
+                const next = toggleSoundEnabled();
+                setSoundActive(next);
+                if (next) playSubmissionNotificationSound();
+              }}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer ${
+                soundActive
+                  ? 'bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                  : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+              }`}
+              title="Bật/Tắt chuông báo khi học sinh nộp bài"
+            >
+              {soundActive ? (
+                <>
+                  <Volume2 className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                  <span>Chuông Báo: BẬT</span>
+                </>
+              ) : (
+                <>
+                  <VolumeX className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Chuông Báo: TẮT</span>
+                </>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => playSubmissionNotificationSound()}
+              className="px-2.5 py-1.5 text-[11px] font-bold text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-xl transition cursor-pointer"
+              title="Bấm để nghe thử tiếng chuông báo khi học sinh nộp bài"
+            >
+              🔊 Thử chuông
+            </button>
+          </div>
 
           {/* Nút Dọn dẹp / Xóa bài đã nhận xét xong để tiết kiệm bộ nhớ */}
           {completedCount > 0 && (
