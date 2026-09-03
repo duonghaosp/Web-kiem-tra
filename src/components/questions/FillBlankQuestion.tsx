@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Question } from '../../types/database';
 import { LatexRenderer } from '../common/LatexRenderer';
 import { Edit3, CheckCircle2, XCircle, RotateCcw } from 'lucide-react';
@@ -22,6 +22,68 @@ const cleanAnswerText = (text: any): string => {
     .trim();
 };
 
+// Hàm lọc bỏ các cụm từ chỉ dẫn đề bài không phải là đáp án lựa chọn
+const isBogusPhrase = (text: string): boolean => {
+  if (!text) return true;
+  const lower = text.toLowerCase().trim();
+  if (lower.length < 2) return true;
+  return (
+    lower.includes('hoàn thành') ||
+    lower.includes('đoạn thông tin') ||
+    lower.includes('thông tin dưới đây') ||
+    lower.includes('dưới đây') ||
+    lower.includes('chỗ trống') ||
+    lower.includes('cụm từ sau') ||
+    lower.includes('các từ sau') ||
+    lower.includes('hãy sử dụng') ||
+    lower.includes('thích hợp')
+  );
+};
+
+// Hàm xáo trộn mảng ngẫu nhiên nhưng ổn định cho phiên làm bài (Fisher-Yates)
+function shuffleWords<T>(array: T[], seedStr: string): T[] {
+  if (array.length <= 1) return array;
+  const result = [...array];
+  
+  let seed = 5381;
+  const fullSeedStr = seedStr + '_shuffle_seed_v3';
+  for (let i = 0; i < fullSeedStr.length; i++) {
+    seed = ((seed << 5) + seed + fullSeedStr.charCodeAt(i)) | 0;
+  }
+
+  let s = seed >>> 0;
+  const nextRandom = () => {
+    s |= 0;
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+
+  for (let i = result.length - 1; i > 0; i--) {
+    const j = Math.floor(nextRandom() * (i + 1));
+    const temp = result[i];
+    result[i] = result[j];
+    result[j] = temp;
+  }
+
+  // Đảm bảo không bị trùng 100% thứ tự đáp án ban đầu của giáo viên
+  let isSameOrder = true;
+  for (let i = 0; i < result.length; i++) {
+    if (result[i] !== array[i]) {
+      isSameOrder = false;
+      break;
+    }
+  }
+
+  if (isSameOrder && result.length >= 2) {
+    const first = result.shift()!;
+    result.push(first);
+  }
+
+  return result;
+}
+
 export const FillBlankQuestion: React.FC<FillBlankQuestionProps> = ({
   question,
   selectedAnswers = {},
@@ -32,6 +94,9 @@ export const FillBlankQuestion: React.FC<FillBlankQuestionProps> = ({
   const content = question.content_json || {};
   const rawTemplate: string = content.template || content.question || question.title || '';
   const correctBlanks: Record<string, string[]> = question.correct_answer_json?.blank_answers || {};
+
+  // Seed ngẫu nhiên duy nhất cho phiên làm bài của học sinh để mỗi lần mở đề đều được đảo khác nhau
+  const [shuffleSeed] = useState(() => Math.random().toString(36).substring(2, 9));
 
   // 1. LÀM SẠCH VĂN BẢN CÂU HỎI ĐỂ HIỂN THỊ NGUYÊN VẸN TOÀN BỘ NỘI DUNG GIÁO VIÊN NHẬP
   const cleanDisplayTemplate = useMemo(() => {
@@ -84,7 +149,7 @@ export const FillBlankQuestion: React.FC<FillBlankQuestionProps> = ({
     });
   }, [correctBlanks, content.blanks, content.options, rawTemplate]);
 
-  // 3. KHO TỪ ĐÁP ÁN ĐỂ SỔ RA DANH SÁCH LỰA CHỌN
+  // 3. KHO TỪ ĐÁP ÁN ĐỂ SỔ RA DANH SÁCH LỰA CHỌN (ĐÃ ĐẢO THỨ TỰ NGẪU NHIÊN)
   const wordPool = useMemo(() => {
     const wordsSet = new Set<string>();
 
@@ -93,7 +158,7 @@ export const FillBlankQuestion: React.FC<FillBlankQuestionProps> = ({
       const arr = Array.isArray(ansArr) ? ansArr : [ansArr];
       arr.forEach((w) => {
         const clean = cleanAnswerText(w);
-        if (clean) wordsSet.add(clean);
+        if (clean && !isBogusPhrase(clean)) wordsSet.add(clean);
       });
     });
 
@@ -101,7 +166,7 @@ export const FillBlankQuestion: React.FC<FillBlankQuestionProps> = ({
     if (Array.isArray(content.options)) {
       content.options.forEach((opt: any) => {
         const clean = cleanAnswerText(opt);
-        if (clean) wordsSet.add(clean);
+        if (clean && !isBogusPhrase(clean)) wordsSet.add(clean);
       });
     }
 
@@ -113,23 +178,26 @@ export const FillBlankQuestion: React.FC<FillBlankQuestionProps> = ({
         if (plain && plain.length >= 2 && plain.length <= 50 && !plain.includes('--tw-') && !plain.includes('style=')) {
           plain.split(/\s{2,}|\t|•/g).forEach((chunk) => {
             const c = cleanAnswerText(chunk);
-            if (c && c.length >= 2 && c.length <= 50) wordsSet.add(c);
+            if (c && c.length >= 2 && c.length <= 50 && !isBogusPhrase(c)) wordsSet.add(c);
           });
         }
       });
     }
 
-    // D. Trích xuất từ câu chỉ dẫn (Ví dụ: "sử dụng các từ sau: dồi dào, phức tạp...")
-    const phraseListMatch = rawTemplate.match(/(?:cụm từ sau|các từ sau|các cụm từ sau)[:\s]+([^.\n\r]+)/i);
+    // D. Trích xuất từ câu chỉ dẫn (chỉ khi có dấu 2 chấm : hoặc gạch ngang - sau từ khóa)
+    const phraseListMatch = rawTemplate.match(/(?:cụm từ sau|các từ sau|các cụm từ sau)\s*[:：\-–—]\s*([^.\n\r]+)/i);
     if (phraseListMatch && phraseListMatch[1]) {
       phraseListMatch[1].split(/[,;•\n\t]+/g).forEach((chunk) => {
         const clean = cleanAnswerText(chunk);
-        if (clean && clean.length >= 2 && clean.length <= 60) wordsSet.add(clean);
+        if (clean && clean.length >= 2 && clean.length <= 60 && !isBogusPhrase(clean)) wordsSet.add(clean);
       });
     }
 
-    return Array.from(wordsSet);
-  }, [rawTemplate, correctBlanks, content.options]);
+    const rawList = Array.from(wordsSet);
+
+    // ĐẢO THỨ TỰ ĐÁP ÁN: Xáo trộn ngẫu nhiên để học sinh không chọn theo thứ tự 1, 2, 3, 4 của giáo viên
+    return shuffleWords(rawList, (question.id || '') + '_' + shuffleSeed);
+  }, [rawTemplate, correctBlanks, content.options, question.id, shuffleSeed]);
 
   // 4. DANH SÁCH ĐÁP ÁN SỔ RA CHO TỪNG SỐ (TỰ ĐỘNG ẨN CÁC ĐÁP ÁN ĐÃ CHỌN Ở SỐ KHÁC)
   const getAvailableWordsForBlank = (blankId: string) => {
