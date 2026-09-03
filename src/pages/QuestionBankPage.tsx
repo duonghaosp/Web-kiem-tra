@@ -34,6 +34,7 @@ import {
   ChevronsUpDown,
   ChevronsDownUp,
   ArrowUpCircle,
+  AlertCircle,
 } from 'lucide-react';
 import { Question, QuestionType, Assignment, TargetType } from '../types/database';
 import { QuestionEditor } from '../components/questions/QuestionEditor';
@@ -685,6 +686,18 @@ export const QuestionBankPage: React.FC = () => {
     }
 
     const calcTotalPoints = Number(totalSelectedPoints) || selectedQuestions.reduce((sum, q) => sum + (q.points || 1.0), 0);
+
+    // Xác nhận số lượng câu hỏi trước khi giao (Gợi ý 2)
+    const confirmMsg =
+      `Cô Hảo ơi, cô đang chuẩn bị giao bài kiểm tra:\n\n` +
+      `📌 Tên đề: "${examFormTitle.trim() || `Kiểm Tra Địa Lí Khối ${selectedGrade}`}"\n` +
+      `📚 Số lượng câu hỏi: ĐÚNG ${selectedQuestions.length} CÂU HỎI (từ ${currentLesson?.title || `Khối ${selectedGrade}`})\n` +
+      `🎯 Tổng điểm: ${calcTotalPoints}đ • Thời gian: ${examDuration} phút\n` +
+      `👥 Giao cho các lớp: ${targetClasses.join(', ')}\n\n` +
+      `Cô có muốn xác nhận giao đề thi này ngay không ạ?`;
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
 
     const newAssignment: Assignment = {
       id: 'asg_' + Date.now(),
@@ -1653,6 +1666,40 @@ export const QuestionBankPage: React.FC = () => {
                   onChange={(e) => setExamAllowLate(e.target.checked)}
                   className="w-4 h-4 text-ocean-600 rounded"
                 />
+              </div>
+
+              {/* BẢNG TỔNG KẾT VÀ XÁC NHẬN SỐ LƯỢNG CÂU HỎI (GỢI Ý 2) */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-amber-900">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Xác nhận thông tin đề thi chuẩn bị giao:</span>
+                </div>
+                <div className="space-y-1 text-[11.5px] pt-1">
+                  <div className="flex items-center justify-between text-amber-950 font-bold">
+                    <span>Số lượng câu hỏi đã chọn:</span>
+                    <span className="px-2 py-0.5 bg-amber-100 rounded-md font-black text-amber-900">
+                      {selectedQuestions.length} câu hỏi
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-amber-950 font-bold">
+                    <span>Phạm vi bài học:</span>
+                    <span className="font-semibold text-slate-700 line-clamp-1 max-w-[240px]">
+                      {currentLesson?.title || `Khối ${selectedGrade}`}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-amber-950 font-bold">
+                    <span>Lớp nhận đề thi:</span>
+                    <span className="text-ocean-700 font-bold">
+                      {targetClasses.join(', ') || 'Chưa chọn lớp'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-amber-950 font-bold">
+                    <span>Tổng điểm đề thi:</span>
+                    <span className="text-emerald-700 font-black">
+                      {totalSelectedPoints} điểm
+                    </span>
+                  </div>
+                </div>
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">

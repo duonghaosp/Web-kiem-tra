@@ -35,6 +35,7 @@ import {
   PlayCircle,
   Volume2,
   VolumeX,
+  FileEdit,
 } from 'lucide-react';
 import { Assignment, TargetType, Question, QuestionType } from '../types/database';
 import { getStoredLessons, LessonItem } from '../data/curriculum';
@@ -51,6 +52,7 @@ import { AssignmentQrModal } from '../components/assignments/AssignmentQrModal';
 import { AssignmentPreviewModal } from '../components/assignments/AssignmentPreviewModal';
 import { DeleteAssignmentWarningModal } from '../components/assignments/DeleteAssignmentWarningModal';
 import { AssignmentTrashModal } from '../components/assignments/AssignmentTrashModal';
+import { EditAssignmentQuestionsModal } from '../components/assignments/EditAssignmentQuestionsModal';
 import { saveAssignmentsToCloud, fetchAssignmentsFromCloud } from '../lib/assignmentCloudSync';
 import { playSubmissionNotificationSound, isSoundEnabled, toggleSoundEnabled } from '../utils/soundEffects';
 
@@ -165,6 +167,9 @@ export const AssignmentsPage: React.FC = () => {
   // Modal Xem lại đề thi đã giao
   const [previewAssignment, setPreviewAssignment] = useState<Assignment | null>(null);
   const [previewQuestions, setPreviewQuestions] = useState<Question[]>([]);
+
+  // Modal Chỉnh sửa câu hỏi trong đề đã giao (Gợi ý 3)
+  const [editingQuestionsAssignment, setEditingQuestionsAssignment] = useState<Assignment | null>(null);
 
   // Modal Quy trình Tạo Đề & Giao Bài
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -496,6 +501,18 @@ export const AssignmentsPage: React.FC = () => {
       return;
     }
 
+    // Xác nhận số lượng câu hỏi trước khi giao bài (Gợi ý 2)
+    const confirmMsg =
+      `Cô Hảo ơi, cô đang chuẩn bị giao bài kiểm tra:\n\n` +
+      `📌 Tên đề: "${examTitle.trim() || `Kiểm Tra Địa Lí Khối ${createGrade}`}"\n` +
+      `📚 Số lượng câu hỏi: ĐÚNG ${selectedExamQuestions.length} CÂU HỎI (${structureAnalysis.objCount} câu Trắc nghiệm + ${structureAnalysis.essayCount} câu Tự luận)\n` +
+      `🎯 Tổng điểm: ${structureAnalysis.totalScore}đ • Thời gian: ${durationMinutes} phút\n` +
+      `👥 Giao cho các lớp: ${createSelectedClasses.join(', ')}\n\n` +
+      `Cô có xác nhận giao đề thi này cho học sinh không ạ?`;
+    if (!window.confirm(confirmMsg)) {
+      return;
+    }
+
     const catObj = ASSESSMENT_CATEGORIES.find((c) => c.id === selectedCategory);
     const newAssignment: Assignment = {
       id: 'asg_' + Date.now(),
@@ -523,6 +540,16 @@ export const AssignmentsPage: React.FC = () => {
     setIsCreateModalOpen(false);
 
     alert(`🎉 Tạo đề và giao bài thành công cho các lớp: ${createSelectedClasses.join(', ')}!\nCấu trúc: ${structureAnalysis.objCount} câu Trắc nghiệm (${structureAnalysis.objScore}đ) + ${structureAnalysis.essayCount} câu Tự luận (${structureAnalysis.essayScore}đ).`);
+  };
+
+  // Lưu đề thi sau khi thêm/bớt hoặc chỉnh sửa câu hỏi (Gợi ý 3)
+  const handleSaveEditedAssignment = (updated: Assignment) => {
+    const updatedList = assignments.map((a) => (a.id === updated.id ? updated : a));
+    saveAssignments(updatedList);
+    if (previewAssignment?.id === updated.id) {
+      setPreviewAssignment(updated);
+      setPreviewQuestions(updated.questions || []);
+    }
   };
 
   // Sao chép liên kết làm bài
@@ -895,6 +922,17 @@ export const AssignmentsPage: React.FC = () => {
                     >
                       <Eye className="w-3.5 h-3.5 text-teal-600" />
                       <span>Xem lại đề</span>
+                    </button>
+
+                    {/* Nút Sửa đề / Thêm câu hỏi (Gợi ý 3) */}
+                    <button
+                      type="button"
+                      onClick={() => setEditingQuestionsAssignment(asg)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 text-xs font-bold transition active:scale-95 border border-indigo-200 cursor-pointer shadow-2xs"
+                      title="Thêm hoặc bớt câu hỏi trong đề thi này mà không cần tạo lại"
+                    >
+                      <FileEdit className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Sửa đề / Thêm câu</span>
                     </button>
 
                     <button
@@ -1751,6 +1789,35 @@ export const AssignmentsPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* BẢNG TỔNG KẾT VÀ XÁC NHẬN SỐ LƯỢNG CÂU HỎI (GỢI Ý 2) */}
+              <div className="p-3.5 rounded-2xl bg-amber-50/80 border border-amber-200 text-xs space-y-1.5">
+                <div className="flex items-center gap-2 font-bold text-amber-900">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Xác nhận thông tin đề thi chuẩn bị giao:</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-[11.5px] pt-1">
+                  <div className="bg-white/80 p-2 rounded-xl border border-amber-200">
+                    <span className="text-slate-500 block text-[10px]">Số lượng câu:</span>
+                    <strong className="text-amber-950 font-black text-xs">
+                      {selectedExamQuestions.length} câu hỏi
+                    </strong>{' '}
+                    ({structureAnalysis.objCount} TN + {structureAnalysis.essayCount} TL)
+                  </div>
+                  <div className="bg-white/80 p-2 rounded-xl border border-amber-200">
+                    <span className="text-slate-500 block text-[10px]">Lớp nhận đề:</span>
+                    <strong className="text-amber-950 font-black text-xs">
+                      {createSelectedClasses.join(', ') || 'Chưa chọn'}
+                    </strong>
+                  </div>
+                  <div className="bg-white/80 p-2 rounded-xl border border-amber-200">
+                    <span className="text-slate-500 block text-[10px]">Điểm số & Thời gian:</span>
+                    <strong className="text-amber-950 font-black text-xs">
+                      {structureAnalysis.totalScore}đ • {durationMinutes} phút
+                    </strong>
+                  </div>
+                </div>
+              </div>
+
               {/* NÚT TẠO ĐỀ & GIAO BÀI CUỐI CÙNG */}
               <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2 border-t border-slate-100">
                 <div className="text-xs text-slate-600 flex items-center gap-2 flex-wrap">
@@ -1821,6 +1888,20 @@ export const AssignmentsPage: React.FC = () => {
             setPreviewAssignment(null);
             navigate(`/take-exam/${assignmentId}`);
           }}
+          onEditQuestions={(asg) => {
+            setPreviewAssignment(null);
+            setEditingQuestionsAssignment(asg);
+          }}
+        />
+      )}
+
+      {/* MODAL CHỈNH SỬA CÂU HỎI TRONG ĐỀ ĐÃ GIAO (GỢI Ý 3) */}
+      {editingQuestionsAssignment && (
+        <EditAssignmentQuestionsModal
+          isOpen={Boolean(editingQuestionsAssignment)}
+          assignment={editingQuestionsAssignment}
+          onClose={() => setEditingQuestionsAssignment(null)}
+          onSave={handleSaveEditedAssignment}
         />
       )}
 

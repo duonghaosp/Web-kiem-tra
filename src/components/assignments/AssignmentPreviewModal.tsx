@@ -14,6 +14,7 @@ import {
   Check,
   BookOpen,
   FileText,
+  FileEdit,
 } from 'lucide-react';
 
 interface AssignmentPreviewModalProps {
@@ -21,6 +22,7 @@ interface AssignmentPreviewModalProps {
   questions: Question[];
   onClose: () => void;
   onTakeExamAsStudent: (assignmentId: string) => void;
+  onEditQuestions?: (assignment: Assignment) => void;
 }
 
 // Hàm làm sạch chuỗi đáp án điền từ
@@ -39,6 +41,7 @@ export const AssignmentPreviewModal: React.FC<AssignmentPreviewModalProps> = ({
   questions,
   onClose,
   onTakeExamAsStudent,
+  onEditQuestions,
 }) => {
   // Trạng thái bật/tắt hiển thị đáp án đúng & lời giải
   const [showAnswers, setShowAnswers] = useState<boolean>(true);
@@ -120,6 +123,19 @@ export const AssignmentPreviewModal: React.FC<AssignmentPreviewModalProps> = ({
               <ExternalLink className="w-3.5 h-3.5" />
               <span className="hidden sm:inline">Làm thử</span>
             </button>
+
+            {/* Nút Sửa đề / Thêm câu hỏi (Gợi ý 3) */}
+            {onEditQuestions && (
+              <button
+                type="button"
+                onClick={() => onEditQuestions(assignment)}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-800 border border-indigo-200 text-xs font-bold shadow-2xs transition active:scale-95 cursor-pointer"
+                title="Mở giao diện thêm hoặc bớt câu hỏi trong đề thi này"
+              >
+                <FileEdit className="w-3.5 h-3.5 text-indigo-600" />
+                <span className="hidden sm:inline">Sửa đề / Thêm câu</span>
+              </button>
+            )}
 
             {/* Nút In đề */}
             <button
