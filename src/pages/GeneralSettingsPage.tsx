@@ -738,6 +738,9 @@ export const GeneralSettingsPage: React.FC = () => {
                 </label>
                 <input
                   type="text"
+                  name="teacher_grading_comment_template"
+                  id="teacher_grading_comment_template"
+                  autoComplete="off"
                   value={defaultFeedback}
                   onChange={(e) => setDefaultFeedback(e.target.value)}
                   placeholder="VD: Cô khen ngợi tinh thần làm bài chăm chỉ của em!"
@@ -747,6 +750,19 @@ export const GeneralSettingsPage: React.FC = () => {
 
               {/* KHỐI ĐỔI MẬT KHẨU GIÁO VIÊN BẢO MẬT */}
               <div className="md:col-span-2 bg-gradient-to-br from-amber-50/90 via-orange-50/40 to-amber-50/80 border-2 border-amber-200 rounded-3xl p-5 sm:p-6 shadow-xs space-y-4">
+                {/* Khai báo rõ ràng tài khoản cohao@diali.edu.vn để trình duyệt lưu mật khẩu chuẩn xác */}
+                <input
+                  type="text"
+                  name="username"
+                  id="teacher_cloud_sync_username"
+                  autoComplete="username"
+                  value="cohao@diali.edu.vn"
+                  readOnly
+                  tabIndex={-1}
+                  aria-hidden="true"
+                  className="sr-only hidden"
+                />
+
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-amber-200/80">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-amber-500 text-white flex items-center justify-center shadow-md shadow-amber-500/20 shrink-0">

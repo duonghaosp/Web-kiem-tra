@@ -10,7 +10,7 @@ export const LoginPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'student' | 'teacher'>('student');
   const [studentCode, setStudentCode] = useState<string>('');
   const [studentGrade, setStudentGrade] = useState<number>(7);
-  const [teacherEmail, setTeacherEmail] = useState<string>('');
+  const [teacherEmail, setTeacherEmail] = useState<string>('cohao@diali.edu.vn');
   const [teacherPassword, setTeacherPassword] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
@@ -164,20 +164,20 @@ export const LoginPage: React.FC = () => {
           </form>
         ) : (
           /* FORM GIÁO VIÊN */
-          <form onSubmit={handleTeacherSubmit} className="space-y-4" autoComplete="off" data-lpignore="true">
+          <form onSubmit={handleTeacherSubmit} className="space-y-4">
             <div>
               <label className="block text-xs font-bold text-slate-700 mb-1">
                 Tài khoản hoặc Email Giáo Viên:
               </label>
               <input
                 type="text"
-                name="teacher_username_unique"
+                name="username"
+                id="username"
                 value={teacherEmail}
                 onChange={(e) => setTeacherEmail(e.target.value)}
-                placeholder="Nhập tài khoản hoặc email của cô..."
-                autoComplete="off"
-                data-form-type="other"
-                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-ocean-500"
+                placeholder="cohao@diali.edu.vn"
+                autoComplete="username"
+                className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-ocean-500 bg-slate-50/50"
                 required
               />
             </div>
@@ -189,12 +189,12 @@ export const LoginPage: React.FC = () => {
               <div className="relative">
                 <input
                   type="password"
-                  name="teacher_pwd_unique"
+                  name="password"
+                  id="password"
                   value={teacherPassword}
                   onChange={(e) => setTeacherPassword(e.target.value)}
                   placeholder="Nhập mật khẩu bảo mật..."
-                  autoComplete="new-password"
-                  data-form-type="other"
+                  autoComplete="current-password"
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-ocean-500"
                   required
                 />
