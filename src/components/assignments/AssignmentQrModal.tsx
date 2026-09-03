@@ -19,7 +19,9 @@ export const AssignmentQrModal: React.FC<AssignmentQrModalProps> = ({
 
   if (!isOpen || !assignment) return null;
 
-  const examUrl = `${window.location.origin}/take-exam/${assignment.id}`;
+  const primaryClass = assignment.target_ids && assignment.target_ids.length > 0 ? assignment.target_ids[0] : '';
+  const classQuery = primaryClass ? `?class=${encodeURIComponent(primaryClass)}&grade=${assignment.grade || ''}` : '';
+  const examUrl = `${window.location.origin}/take-exam/${assignment.id}${classQuery}`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(examUrl);

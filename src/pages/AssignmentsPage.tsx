@@ -554,7 +554,10 @@ export const AssignmentsPage: React.FC = () => {
 
   // Sao chép liên kết làm bài
   const handleCopyLink = (assignmentId: string) => {
-    const testUrl = `${window.location.origin}/take-exam/${assignmentId}`;
+    const targetAsg = assignments.find((a) => a.id === assignmentId);
+    const primaryClass = targetAsg?.target_ids?.[0] || '';
+    const classParam = primaryClass ? `?class=${encodeURIComponent(primaryClass)}&grade=${targetAsg?.grade || ''}` : '';
+    const testUrl = `${window.location.origin}/take-exam/${assignmentId}${classParam}`;
     navigator.clipboard.writeText(testUrl);
     setCopiedId(assignmentId);
     setTimeout(() => setCopiedId(null), 2000);

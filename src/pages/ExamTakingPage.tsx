@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import {
@@ -137,25 +137,58 @@ export const ExamTakingPage: React.FC = () => {
     return null;
   });
 
+  const [searchParams] = useSearchParams();
   const [loadingAssignment, setLoadingAssignment] = useState<boolean>(!currentAssignment);
 
   // Form đăng nhập học sinh: 'by_name' (chọn tên trong lớp) hoặc 'by_code' (nhập mã học sinh)
   const [loginMethod, setLoginMethod] = useState<'by_name' | 'by_code'>('by_name');
-  const [selectedClass, setSelectedClass] = useState<string>('Lớp 7A1');
+  const [selectedClass, setSelectedClass] = useState<string>(() => {
+    const classFromUrl = searchParams.get('class');
+    if (classFromUrl) return classFromUrl;
+    if (currentAssignment?.target_ids && currentAssignment.target_ids.length > 0) {
+      return currentAssignment.target_ids[0];
+    }
+    return 'Lớp 7A4';
+  });
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+  const [studentSearchKeyword, setStudentSearchKeyword] = useState<string>('');
   const [inputStudentCode, setInputStudentCode] = useState<string>('');
-  const [inputGrade, setInputGrade] = useState<number>(() => currentAssignment?.grade || 7);
+  const [inputGrade, setInputGrade] = useState<number>(() => {
+    const gradeFromUrl = searchParams.get('grade');
+    if (gradeFromUrl) return Number(gradeFromUrl) || 7;
+    return currentAssignment?.grade || 7;
+  });
   const [authError, setAuthError] = useState<string>('');
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
 
   const allSystemStudents = useMemo<Profile[]>(() => getStoredStudents(), []);
 
-  // Danh sách học sinh theo lớp đang chọn
+  // Danh sách học sinh theo lớp đang chọn (SẮP XẾP CHUẨN THEO TÊN HỌC SINH VIỆT NAM: A, B, C...)
   const classStudents = useMemo<Profile[]>(() => {
     return allSystemStudents
       .filter((s: Profile) => s.class_name === selectedClass)
-      .sort((a: Profile, b: Profile) => a.full_name.localeCompare(b.full_name, 'vi'));
+      .sort((a: Profile, b: Profile) => {
+        // Tách lấy Tên (chữ cuối cùng trong họ và tên) để so sánh theo bảng chữ cái
+        const partsA = a.full_name.trim().split(/\s+/);
+        const partsB = b.full_name.trim().split(/\s+/);
+        const firstNameA = partsA[partsA.length - 1] || '';
+        const firstNameB = partsB[partsB.length - 1] || '';
+        const cmpFirst = firstNameA.localeCompare(firstNameB, 'vi', { sensitivity: 'base' });
+        if (cmpFirst !== 0) return cmpFirst;
+        return a.full_name.localeCompare(b.full_name, 'vi', { sensitivity: 'base' });
+      });
   }, [allSystemStudents, selectedClass]);
+
+  // Lọc theo từ khóa tìm kiếm nhanh của học sinh
+  const filteredClassStudents = useMemo(() => {
+    if (!studentSearchKeyword.trim()) return classStudents;
+    const kw = studentSearchKeyword.toLowerCase().trim();
+    return classStudents.filter(
+      (st) =>
+        st.full_name.toLowerCase().includes(kw) ||
+        (st.student_code && st.student_code.toLowerCase().includes(kw))
+    );
+  }, [classStudents, studentSearchKeyword]);
 
   // Tự động tải đề thi từ Supabase Cloud khi học sinh quét mã QR từ điện thoại
   useEffect(() => {
@@ -172,8 +205,10 @@ export const ExamTakingPage: React.FC = () => {
       if (isMounted) {
         if (asg) {
           setCurrentAssignment(asg);
-          setInputGrade(asg.grade || 7);
-          if (asg.target_ids && asg.target_ids.length > 0) {
+          if (!searchParams.get('grade') && asg.grade) {
+            setInputGrade(asg.grade);
+          }
+          if (asg.target_ids && asg.target_ids.length > 0 && !searchParams.get('class')) {
             setSelectedClass(asg.target_ids[0]);
           }
         }
@@ -596,24 +631,54 @@ export const ExamTakingPage: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Họ và tên của em ({classStudents.length} học sinh):
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Họ và tên của em ({classStudents.length} học sinh):
+                    </label>
+                    <span className="text-[11px] font-semibold text-ocean-700 bg-ocean-50 px-2 py-0.5 rounded-md">
+                      Xếp theo tên (A - Z)
+                    </span>
+                  </div>
+
+                  {/* Ô TÌM NHANH TÊN HỌC SINH */}
+                  <div className="relative mb-2">
+                    <input
+                      type="text"
+                      placeholder="🔍 Gõ tên của em để tìm nhanh (Ví dụ: Anh, Bách, Mai, Say...)"
+                      value={studentSearchKeyword}
+                      onChange={(e) => setStudentSearchKeyword(e.target.value)}
+                      className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-ocean-500 bg-slate-50 font-medium"
+                    />
+                    {studentSearchKeyword && (
+                      <button
+                        type="button"
+                        onClick={() => setStudentSearchKeyword('')}
+                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 hover:text-slate-600"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
                   <select
                     value={selectedStudentId}
                     onChange={(e) => setSelectedStudentId(e.target.value)}
                     required
                     className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-ocean-500 bg-white"
                   >
-                    <option value="">-- Bấm vào đây để chọn đúng tên của em --</option>
-                    {classStudents.map((st: Profile) => (
+                    <option value="">
+                      {filteredClassStudents.length === 0
+                        ? '-- Không tìm thấy học sinh nào trùng khớp --'
+                        : '-- Bấm vào đây để chọn đúng tên của em --'}
+                    </option>
+                    {filteredClassStudents.map((st: Profile, idx: number) => (
                       <option key={st.id} value={st.id}>
-                        {st.full_name} {st.student_code ? `(${st.student_code})` : ''}
+                        {idx + 1}. {st.full_name}
                       </option>
                     ))}
                   </select>
                   <p className="text-[11px] text-slate-400 mt-1">
-                    Gợi ý: Tìm tên của em theo danh sách bảng chữ cái để hệ thống lưu điểm cho em nhé!
+                    💡 Danh sách đã được sắp xếp chuẩn theo Tên (A - Z). Em hãy bấm chọn đúng tên của mình nhé!
                   </p>
                 </div>
 
