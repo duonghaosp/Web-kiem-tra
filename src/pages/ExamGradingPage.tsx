@@ -36,8 +36,13 @@ import { LatexRenderer } from '../components/common/LatexRenderer';
 import { triggerCelebration } from '../lib/gamification';
 import { BadgeList } from '../components/common/BadgeList';
 import { getStudentBadges, toggleBadgeForStudent } from '../data/badgeService';
+import {
+  fetchStudentSubmissionsFromCloud,
+  fetchAssignmentsFromCloud,
+  saveAllSubmissionsToCloud,
+  saveAssignmentsToCloud,
+} from '../lib/assignmentCloudSync';
 import { playSoftClick, playSubmissionNotificationSound, isSoundEnabled, toggleSoundEnabled } from '../utils/soundEffects';
-import { fetchStudentSubmissionsFromCloud, fetchAssignmentsFromCloud } from '../lib/assignmentCloudSync';
 
 // Danh sách bài nộp mẫu của học sinh (Rỗng ban đầu khi giáo viên chưa giao đề thi)
 const DEFAULT_SUBMISSIONS: any[] = [];
@@ -208,7 +213,25 @@ export const ExamGradingPage: React.FC = () => {
 
   const saveSubmissions = (newSubs: any[]) => {
     setSubmissions(newSubs);
-    localStorage.setItem('geo_student_submissions', JSON.stringify(newSubs));
+    saveAllSubmissionsToCloud(newSubs);
+
+    // Cập nhật lại số lượng bài nộp submissions_count cho các đề thi
+    try {
+      const savedAsgs = localStorage.getItem('geo_assignments');
+      if (savedAsgs) {
+        const asgs = JSON.parse(savedAsgs);
+        const updatedAsgs = asgs.map((a: any) => {
+          const realSubsCount = newSubs.filter((s: any) => s.assignment_id === a.id).length;
+          return {
+            ...a,
+            submissions_count: realSubsCount,
+          };
+        });
+        saveAssignmentsToCloud(updatedAsgs);
+      }
+    } catch (e) {
+      console.warn(e);
+    }
   };
 
   const [selectedSubmission, setSelectedSubmission] = useState<any | null>(null);
@@ -226,10 +249,25 @@ export const ExamGradingPage: React.FC = () => {
   const [testTypeFilter, setTestTypeFilter] = useState<'all' | 'real_only' | 'test_only'>('all'); // Lọc bài thi thật vs bài thi thử
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  // Đếm tổng số bài thi thử của học sinh mẫu
+  // Danh sách bài nộp theo bài kiểm tra / lớp đang chọn
+  const scopedSubmissions = useMemo(() => {
+    return submissions.filter((sub) => {
+      // 1. Lọc theo Đợt giao bài
+      if (assignmentFilter !== 'all' && sub.assignment_id && sub.assignment_id !== assignmentFilter) {
+        return false;
+      }
+      // 2. Lọc theo Lớp
+      if (classFilter !== 'all' && sub.class_name !== classFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [submissions, assignmentFilter, classFilter]);
+
+  // Đếm tổng số bài thi thử của học sinh mẫu theo bộ lọc đang xem
   const testSubmissionsCount = useMemo(() => {
-    return submissions.filter((s) => isTestSubmission(s)).length;
-  }, [submissions]);
+    return scopedSubmissions.filter((s) => isTestSubmission(s)).length;
+  }, [scopedSubmissions]);
 
   // Danh sách học sinh được chọn để nhận xét nhanh hàng loạt hoặc xóa
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
@@ -269,14 +307,18 @@ export const ExamGradingPage: React.FC = () => {
     return isWaitingGrading || !hasFeedback;
   };
 
-  // Tổng số lượng bài theo từng tab
+  // Tổng số lượng bài theo từng tab (Khớp 100% với đợt kiểm tra và lớp học đang chọn)
   const pendingCount = useMemo(() => {
-    return submissions.filter((s) => isSubmissionPending(s)).length;
-  }, [submissions]);
+    return scopedSubmissions.filter((s) => isSubmissionPending(s)).length;
+  }, [scopedSubmissions]);
 
   const completedCount = useMemo(() => {
-    return submissions.filter((s) => !isSubmissionPending(s)).length;
-  }, [submissions]);
+    return scopedSubmissions.filter((s) => !isSubmissionPending(s)).length;
+  }, [scopedSubmissions]);
+
+  const allScopedCount = useMemo(() => {
+    return scopedSubmissions.length;
+  }, [scopedSubmissions]);
 
   // Tổng điểm tự động cộng dồn
   const calculatedTotalScore = useMemo(() => {
@@ -716,7 +758,7 @@ export const ExamGradingPage: React.FC = () => {
           }`}
         >
           <FileText className="w-4 h-4" />
-          <span>Tất Cả ({submissions.length})</span>
+          <span>Tất Cả ({allScopedCount})</span>
         </button>
       </div>
 

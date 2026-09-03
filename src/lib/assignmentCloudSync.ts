@@ -281,3 +281,27 @@ export async function fetchStudentSubmissionsFromCloud(): Promise<any[]> {
 
   return localSubs;
 }
+
+// 6. Lưu toàn bộ danh sách bài nộp (Đồng bộ đồng thời LocalStorage & Supabase Cloud khi giáo viên xóa/dọn dẹp/nhận xét)
+export async function saveAllSubmissionsToCloud(submissions: any[]): Promise<void> {
+  localStorage.setItem(LOCAL_SUBMISSIONS_KEY, JSON.stringify(submissions));
+  window.dispatchEvent(new Event('geo_student_submissions_updated'));
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('system_settings').upsert(
+        {
+          key: CLOUD_SUBMISSIONS_KEY,
+          value: {
+            submissions,
+            updated_at: new Date().toISOString(),
+          },
+        },
+        { onConflict: 'key' }
+      );
+      console.log('✅ Đã đồng bộ toàn bộ bài nộp lên Supabase Cloud:', submissions.length);
+    } catch (err) {
+      console.warn('Lỗi đồng bộ submissions lên Supabase Cloud:', err);
+    }
+  }
+}
