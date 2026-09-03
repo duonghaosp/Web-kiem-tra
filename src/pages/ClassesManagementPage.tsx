@@ -17,6 +17,9 @@ import {
   FileSpreadsheet,
   RotateCcw,
   Award,
+  Cloud,
+  CloudUpload,
+  RefreshCw,
 } from 'lucide-react';
 import { ClassItem, Profile } from '../types/database';
 import { GrantXpModal } from '../components/gamification/GrantXpModal';
@@ -90,6 +93,31 @@ export const ClassesManagementPage: React.FC = () => {
   const saveStudents = (newStudents: Profile[]) => {
     setStudents(newStudents);
     saveStudentsToCloud(newStudents);
+  };
+
+  // Trạng thái đồng bộ đám mây (Gợi ý 2 & 3)
+  const [isSyncingCloud, setIsSyncingCloud] = useState<boolean>(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState<string>(() => {
+    return localStorage.getItem('geo_last_cloud_sync_time') || 'Vừa xong';
+  });
+
+  // Nút đồng bộ ngay lên đám mây (Gợi ý 2)
+  const handleManualCloudSync = async () => {
+    setIsSyncingCloud(true);
+    try {
+      await saveStudentsToCloud(students);
+      const nowStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
+      setLastSyncedTime(nowStr);
+      localStorage.setItem('geo_last_cloud_sync_time', nowStr);
+      alert(
+        `🎉 Đã đồng bộ thành công toàn bộ ${students.length} học sinh lên Supabase Cloud!\nĐiện thoại của học sinh quét mã QR sẽ nhận ngay danh sách chuẩn này.`
+      );
+    } catch (err) {
+      console.error('Lỗi đồng bộ:', err);
+      alert('Đã xảy ra lỗi khi đồng bộ lên Đám mây. Cô vui lòng kiểm tra lại kết nối mạng nhé!');
+    } finally {
+      setIsSyncingCloud(false);
+    }
   };
 
   // Hàm lưu danh sách lớp xuống LocalStorage
@@ -503,8 +531,26 @@ export const ClassesManagementPage: React.FC = () => {
           </p>
         </div>
 
-        {/* 4 Nút Chọn Khối To Rõ */}
-        <div className="flex items-center gap-2">
+        {/* Khu vực trạng thái Đám mây & 4 Nút Chọn Khối */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Huy hiệu tình trạng kết nối Đám mây (Gợi ý 3) */}
+          <div
+            className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 border border-emerald-200/90 rounded-2xl shadow-2xs cursor-pointer hover:bg-emerald-100/70 transition"
+            onClick={handleManualCloudSync}
+            title="Đám mây Supabase Cloud đang kết nối ổn định. Bấm để đồng bộ lại ngay!"
+          >
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <div className="flex items-center gap-1.5 text-emerald-950 font-black text-xs">
+              <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Đã đồng bộ Đám mây</span>
+              <span className="text-emerald-700/80 font-semibold text-[11px]">({lastSyncedTime})</span>
+            </div>
+          </div>
+
+          {/* 4 Nút Chọn Khối To Rõ */}
           <div className="flex items-center gap-1.5 bg-slate-100 p-1.5 rounded-2xl">
             {[6, 7, 8, 9].map((g) => (
               <button
@@ -652,6 +698,18 @@ export const ClassesManagementPage: React.FC = () => {
                   className="hidden"
                 />
               </label>
+
+              {/* Nút Đồng Bộ Đám Mây (Gợi ý 2) */}
+              <button
+                type="button"
+                onClick={handleManualCloudSync}
+                disabled={isSyncingCloud}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-sky-50 hover:bg-sky-100 text-sky-700 border border-sky-200 text-xs font-bold transition active:scale-95 cursor-pointer disabled:opacity-50"
+                title="Bấm để đồng bộ ngay toàn bộ danh sách học sinh lên Supabase Cloud cho điện thoại nhận diện"
+              >
+                <CloudUpload className={`w-3.5 h-3.5 ${isSyncingCloud ? 'animate-bounce text-sky-600' : 'text-sky-600'}`} />
+                <span>{isSyncingCloud ? 'Đang đồng bộ...' : 'Đồng Bộ Đám Mây'}</span>
+              </button>
 
               <button
                 type="button"

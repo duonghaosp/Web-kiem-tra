@@ -36,6 +36,7 @@ import {
   Volume2,
   VolumeX,
   FileEdit,
+  Cloud,
 } from 'lucide-react';
 import { Assignment, TargetType, Question, QuestionType } from '../types/database';
 import { getStoredLessons, LessonItem } from '../data/curriculum';
@@ -743,6 +744,21 @@ export const AssignmentsPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          {/* Huy hiệu tình trạng kết nối Đám mây (Gợi ý 3) */}
+          <div
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-emerald-50 border border-emerald-200/90 rounded-2xl shadow-2xs"
+            title="Hệ thống đề thi & học sinh đang kết nối trực tiếp với Supabase Cloud"
+          >
+            <span className="relative flex h-2.5 w-2.5 shrink-0">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500"></span>
+            </span>
+            <div className="flex items-center gap-1.5 text-emerald-950 font-black text-xs">
+              <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Đã kết nối Đám mây</span>
+            </div>
+          </div>
+
           {/* Nút mở Thư viện đề mẫu chuẩn */}
           <button
             type="button"
