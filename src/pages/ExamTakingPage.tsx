@@ -185,12 +185,20 @@ export const ExamTakingPage: React.FC = () => {
     };
   }, [id]);
 
-  // CHỈ CHO PHÉP VÀO LÀM BÀI NẾU:
-  // 1. Profile là học sinh thực thụ (role === 'student')
-  // 2. HOẶC giáo viên chủ động bấm nút "Làm thử đề thi" (isTeacherPreviewing)
-  const isStudentLoggedIn = Boolean(
-    profile && (profile.role === 'student' || isTeacherPreviewing)
-  );
+  // Thí sinh làm bài thi trong phiên này:
+  // Luôn khởi tạo là null để bất kể khi quét lại QR hoặc vào lại link đều BẮT BUỘC chọn tên mới từ đầu
+  const [examStudent, setExamStudent] = useState<Profile | null>(null);
+
+  // CHỈ CHO PHÉP VÀO LÀM BÀI NẾU ĐÃ XÁC NHẬN TÊN TRONG PHIÊN NÀY
+  const isStudentLoggedIn = Boolean(examStudent !== null);
+
+  // Bất kể mở bằng link hay quét mã QR: Luôn reset trạng thái làm bài mới hoàn toàn khi tải trang
+  useEffect(() => {
+    setExamStudent(null);
+    setAnswers({});
+    setCurrentQIndex(0);
+    sessionStorage.removeItem('is_teacher_previewing');
+  }, [id]);
 
   const [questions, setQuestions] = useState<Question[]>(() => {
     if (currentAssignment && currentAssignment.questions && currentAssignment.questions.length > 0) {
@@ -241,18 +249,42 @@ export const ExamTakingPage: React.FC = () => {
   const handleStudentLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
-    const code = inputStudentCode.trim();
+    const code = inputStudentCode.trim().toLowerCase();
     if (!code) {
       setAuthError('Vui lòng nhập mã số học sinh của em (Ví dụ: HS071, HS061...)');
       return;
     }
 
     setIsAuthenticating(true);
+    // 1. Tìm trực tiếp trong danh sách học sinh của hệ thống
+    const found = allSystemStudents.find(
+      (s: Profile) =>
+        (s.student_code && s.student_code.toLowerCase() === code) ||
+        (s.username && s.username.toLowerCase() === code) ||
+        (s.id && s.id.toLowerCase() === code)
+    );
+
+    if (found) {
+      setExamStudent(found);
+      setIsAuthenticating(false);
+      return;
+    }
+
+    // 2. Thử đăng nhập qua AuthContext
     const result = await signInAsStudent(code, inputGrade);
     setIsAuthenticating(false);
 
     if (result.error) {
       setAuthError(result.error.message || 'Mã học sinh không tồn tại hoặc sai khối lớp. Vui lòng kiểm tra lại!');
+    } else {
+      const updated = allSystemStudents.find(
+        (s: Profile) =>
+          (s.student_code && s.student_code.toLowerCase() === code) ||
+          (s.username && s.username.toLowerCase() === code)
+      );
+      if (updated) {
+        setExamStudent(updated);
+      }
     }
   };
 
@@ -270,13 +302,8 @@ export const ExamTakingPage: React.FC = () => {
       return;
     }
 
-    setIsAuthenticating(true);
-    const result = await signInAsStudent(student.student_code || student.username, inputGrade);
-    setIsAuthenticating(false);
-
-    if (result.error) {
-      setAuthError(result.error.message || 'Lỗi xác nhận danh tính học sinh!');
-    }
+    // Gán ngay thí sinh của phiên làm bài này
+    setExamStudent(student);
   };
 
   const handleAutoSubmit = () => {
@@ -308,9 +335,9 @@ export const ExamTakingPage: React.FC = () => {
       id: resultId,
       assignment_id: id || 'asg_1',
       assignment_title: currentAssignment?.title || 'Bài Kiểm Tra Địa Lí',
-      student_name: profile?.full_name || 'Học Sinh Mẫu',
-      student_code: profile?.student_code || 'HS0601',
-      class_name: profile?.class_name || (currentAssignment?.target_ids?.[0] || 'Lớp Thử Nghiệm'),
+      student_name: examStudent?.full_name || 'Học Sinh',
+      student_code: examStudent?.student_code || 'HS071',
+      class_name: examStudent?.class_name || (currentAssignment?.target_ids?.[0] || 'Lớp 7A1'),
       score_tn: gradeResult.objectiveScore,
       max_score_tn: gradeResult.objectiveMaxScore,
       score_tl: 0,
@@ -334,6 +361,10 @@ export const ExamTakingPage: React.FC = () => {
 
     // 2. Tự động đồng bộ bài nộp lên Supabase Cloud (Để bàn làm việc của Cô Hảo nhận ngay)
     await saveStudentSubmission(submissionData);
+
+    // 3. Dọn dẹp phiên đăng nhập để nếu bạn khác mượn điện thoại quét lại QR sẽ phải đăng nhập lại từ đầu
+    sessionStorage.removeItem('is_teacher_previewing');
+    localStorage.removeItem('geo_thcs_auth_profile');
 
     if (!gradeResult.hasEssay) {
       triggerCelebration();
@@ -476,7 +507,18 @@ export const ExamTakingPage: React.FC = () => {
                 type="button"
                 onClick={() => {
                   sessionStorage.setItem('is_teacher_previewing', 'true');
-                  quickLogin('student', 'Cô Hảo (Làm Thử Đề)', currentAssignment?.grade || 7);
+                  const teacherMock: Profile = {
+                    id: 'teacher_preview',
+                    username: 'co_hao_preview',
+                    full_name: 'Cô Dương Thu Hảo (Giáo viên thử nghiệm)',
+                    role: 'teacher',
+                    student_code: 'GV_PREVIEW',
+                    class_name: selectedClass || 'Lớp Giáo Viên',
+                    grade: currentAssignment?.grade || 7,
+                    xp: 0,
+                    level: 1,
+                  };
+                  setExamStudent(teacherMock);
                 }}
                 className="w-full py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl font-bold text-xs shadow-xs transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
               >
@@ -655,7 +697,18 @@ export const ExamTakingPage: React.FC = () => {
                 type="button"
                 onClick={() => {
                   sessionStorage.setItem('is_teacher_previewing', 'true');
-                  quickLogin('student', 'Học Sinh Mẫu', currentAssignment?.grade || 7);
+                  const mockSt: Profile = {
+                    id: 'mock_student_preview',
+                    username: 'hs_mau',
+                    full_name: 'Học Sinh Mẫu (Thử nghiệm)',
+                    role: 'student',
+                    student_code: 'HS_MOCK',
+                    class_name: selectedClass || 'Lớp 7A1',
+                    grade: currentAssignment?.grade || 7,
+                    xp: 0,
+                    level: 1,
+                  };
+                  setExamStudent(mockSt);
                 }}
                 className="w-full py-2.5 px-4 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold rounded-2xl transition cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 shadow-2xs"
               >
@@ -700,18 +753,23 @@ export const ExamTakingPage: React.FC = () => {
             </h2>
             <div className="text-[11px] text-slate-500 font-medium flex items-center gap-2">
               <span>
-                Thí sinh: <strong className="text-slate-800">{profile?.full_name || 'Học sinh'}</strong> ({profile?.class_name || 'Lớp học'} - {profile?.student_code})
+                Thí sinh: <strong className="text-slate-800">{examStudent?.full_name || 'Học sinh'}</strong> ({examStudent?.class_name || 'Lớp học'} {examStudent?.student_code ? `- ${examStudent?.student_code}` : ''})
               </span>
               <button
                 type="button"
                 onClick={async () => {
-                  sessionStorage.removeItem('is_teacher_previewing');
-                  await signOut();
+                  if (confirm('Em có muốn đổi sang học sinh khác không?')) {
+                    setExamStudent(null);
+                    setAnswers({});
+                    setCurrentQIndex(0);
+                    sessionStorage.removeItem('is_teacher_previewing');
+                    await signOut();
+                  }
                 }}
                 className="text-[10px] text-ocean-600 hover:text-ocean-800 underline font-semibold cursor-pointer"
-                title="Đăng xuất để đổi tài khoản học sinh khác"
+                title="Đổi sang học sinh khác làm bài"
               >
-                (Đổi tài khoản)
+                (Không phải em? Đổi tên)
               </button>
             </div>
           </div>
