@@ -14,6 +14,7 @@ import {
 import { Question } from '../types/database';
 import { LatexRenderer } from '../components/common/LatexRenderer';
 import { FillBlankQuestion } from '../components/questions/FillBlankQuestion';
+import { normalizeQuestionList } from '../lib/questionUtils';
 
 export const StudentResultDetailPage: React.FC = () => {
   const { id } = useParams();
@@ -76,20 +77,22 @@ export const StudentResultDetailPage: React.FC = () => {
   }, [id, profile]);
 
   const displayQuestions: Question[] = useMemo(() => {
+    let rawQuestions: Question[] = [];
     if (resultData?.questions && Array.isArray(resultData.questions) && resultData.questions.length > 0) {
-      return resultData.questions;
-    }
-    // Nếu không có mảng questions trong kết quả, tìm trong geo_assignments
-    try {
-      const allAsgs = JSON.parse(localStorage.getItem('geo_assignments') || '[]');
-      const asg = allAsgs.find((a: any) => a.id === id || a.id === resultData?.assignment_id);
-      if (asg && asg.questions && asg.questions.length > 0) {
-        return asg.questions;
+      rawQuestions = resultData.questions;
+    } else {
+      // Nếu không có mảng questions trong kết quả, tìm trong geo_assignments
+      try {
+        const allAsgs = JSON.parse(localStorage.getItem('geo_assignments') || '[]');
+        const asg = allAsgs.find((a: any) => a.id === id || a.id === resultData?.assignment_id);
+        if (asg && asg.questions && asg.questions.length > 0) {
+          rawQuestions = asg.questions;
+        }
+      } catch (e) {
+        console.warn(e);
       }
-    } catch (e) {
-      console.warn(e);
     }
-    return [];
+    return normalizeQuestionList(rawQuestions);
   }, [resultData, id]);
 
   const studentAnswers = resultData?.answers_json || {};

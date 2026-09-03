@@ -1,4 +1,5 @@
 import { Question, CorrectAnswerJson } from '../types/database';
+import { normalizeQuestion } from './questionUtils';
 
 export interface QuestionGradeResult {
   questionId: string;
@@ -26,10 +27,11 @@ export interface ExamGradeResult {
  * Tự động chấm điểm từng câu hỏi Địa lí dựa trên số điểm thực tế của câu hỏi đó
  */
 export function gradeSingleQuestion(
-  question: Question,
+  rawQuestion: Question,
   studentAnswer: any,
   maxPoints: number = 1.0
 ): QuestionGradeResult {
+  const question = normalizeQuestion(rawQuestion);
   const qType = question.type;
   const correctAns: CorrectAnswerJson = question.correct_answer_json || {};
 
@@ -122,9 +124,18 @@ export function gradeSingleQuestion(
     }
 
     case 'fill_blank': {
-      const blankAnswers = correctAns.blank_answers || {};
+      let blankAnswers = correctAns.blank_answers || {};
       const studentBlanks = studentAnswer || {};
-      const blankKeys = Object.keys(blankAnswers);
+      let blankKeys = Object.keys(blankAnswers);
+
+      if (blankKeys.length === 0 && Array.isArray(question.content_json?.options) && question.content_json.options.length > 0) {
+        const autoObj: Record<string, string[]> = {};
+        question.content_json.options.forEach((opt: any, idx: number) => {
+          autoObj[`blank_${idx + 1}`] = [String(opt)];
+        });
+        blankAnswers = autoObj;
+        blankKeys = Object.keys(autoObj);
+      }
 
       if (blankKeys.length === 0) {
         score = maxPoints;

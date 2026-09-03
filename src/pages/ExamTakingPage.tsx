@@ -29,6 +29,7 @@ import { gradeEntireExam } from '../lib/gradingEngine';
 import { triggerCelebration } from '../lib/gamification';
 import { fetchAssignmentById, saveStudentSubmission } from '../lib/assignmentCloudSync';
 import { getStoredStudents, INITIAL_CLASSES } from '../data/studentsData';
+import { normalizeQuestion, normalizeQuestionList } from '../lib/questionUtils';
 
 // Đề thi mẫu chuẩn hóa 6 dạng câu hỏi cho học sinh làm bài
 const SAMPLE_EXAM_QUESTIONS: Question[] = [
@@ -202,9 +203,9 @@ export const ExamTakingPage: React.FC = () => {
 
   const [questions, setQuestions] = useState<Question[]>(() => {
     if (currentAssignment && currentAssignment.questions && currentAssignment.questions.length > 0) {
-      return currentAssignment.questions;
+      return normalizeQuestionList(currentAssignment.questions);
     }
-    return SAMPLE_EXAM_QUESTIONS;
+    return normalizeQuestionList(SAMPLE_EXAM_QUESTIONS);
   });
 
   const [currentQIndex, setCurrentQIndex] = useState<number>(0);
@@ -218,7 +219,7 @@ export const ExamTakingPage: React.FC = () => {
   // Cập nhật câu hỏi và thời gian khi assignment được nạp xong từ Cloud
   useEffect(() => {
     if (currentAssignment && currentAssignment.questions && currentAssignment.questions.length > 0) {
-      setQuestions(currentAssignment.questions);
+      setQuestions(normalizeQuestionList(currentAssignment.questions));
       const totalSecs = (currentAssignment.duration_minutes || 15) * 60;
       setDurationSeconds(totalSecs);
       setTimeLeft(totalSecs);
@@ -722,7 +723,7 @@ export const ExamTakingPage: React.FC = () => {
     );
   }
 
-  const currentQ = questions[currentQIndex];
+  const currentQ = normalizeQuestion(questions[currentQIndex]);
   const isLastQuestion = currentQIndex === questions.length - 1;
 
   const formatTimer = (sec: number) => {

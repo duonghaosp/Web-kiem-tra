@@ -57,15 +57,20 @@ export const FillBlankQuestion: React.FC<FillBlankQuestionProps> = ({
       });
     }
 
-    // Quét số thứ tự (1), (2), (3), (4) trong văn bản nếu database chưa có key
-    if (keysSet.size === 0) {
-      const parenMatches = rawTemplate.match(/\(\s*\d+\s*\)/g);
-      if (parenMatches) {
-        parenMatches.forEach((m) => {
-          const num = m.replace(/\D/g, '');
-          if (num) keysSet.add(`blank_${num}`);
-        });
-      }
+    // Quét toàn bộ số thứ tự (1), (2), (3), (4)... trong văn bản đề bài
+    const parenMatches = rawTemplate.match(/\(\s*\d+\s*\)/g);
+    if (parenMatches) {
+      parenMatches.forEach((m) => {
+        const num = m.replace(/\D/g, '');
+        if (num) keysSet.add(`blank_${num}`);
+      });
+    }
+
+    // Nếu có danh sách options nhưng chưa đủ key, bổ sung theo số lượng options
+    if (Array.isArray(content.options) && content.options.length > keysSet.size) {
+      content.options.forEach((_: any, idx: number) => {
+        keysSet.add(`blank_${idx + 1}`);
+      });
     }
 
     if (keysSet.size === 0) {
@@ -77,7 +82,7 @@ export const FillBlankQuestion: React.FC<FillBlankQuestionProps> = ({
       const numB = parseInt(b.replace(/\D/g, ''), 10) || 0;
       return numA - numB;
     });
-  }, [correctBlanks, content.blanks, rawTemplate]);
+  }, [correctBlanks, content.blanks, content.options, rawTemplate]);
 
   // 3. KHO TỪ ĐÁP ÁN ĐỂ SỔ RA DANH SÁCH LỰA CHỌN
   const wordPool = useMemo(() => {
@@ -92,7 +97,15 @@ export const FillBlankQuestion: React.FC<FillBlankQuestionProps> = ({
       });
     });
 
-    // B. Trích xuất từ các từ in nghiêng / đổi màu ở đề bài nếu có
+    // B. Lấy từ content.options (các phương án A, B, C, D nếu đề được tạo hoặc nhập từ Word/Excel)
+    if (Array.isArray(content.options)) {
+      content.options.forEach((opt: any) => {
+        const clean = cleanAnswerText(opt);
+        if (clean) wordsSet.add(clean);
+      });
+    }
+
+    // C. Trích xuất từ các từ in nghiêng / đổi màu ở đề bài nếu có
     const italicMatches = rawTemplate.match(/<(?:em|i|span)[^>]*>(.*?)<\/(?:em|i|span)>/gi);
     if (italicMatches) {
       italicMatches.forEach((m) => {
@@ -106,8 +119,17 @@ export const FillBlankQuestion: React.FC<FillBlankQuestionProps> = ({
       });
     }
 
+    // D. Trích xuất từ câu chỉ dẫn (Ví dụ: "sử dụng các từ sau: dồi dào, phức tạp...")
+    const phraseListMatch = rawTemplate.match(/(?:cụm từ sau|các từ sau|các cụm từ sau)[:\s]+([^.\n\r]+)/i);
+    if (phraseListMatch && phraseListMatch[1]) {
+      phraseListMatch[1].split(/[,;•\n\t]+/g).forEach((chunk) => {
+        const clean = cleanAnswerText(chunk);
+        if (clean && clean.length >= 2 && clean.length <= 60) wordsSet.add(clean);
+      });
+    }
+
     return Array.from(wordsSet);
-  }, [rawTemplate, correctBlanks]);
+  }, [rawTemplate, correctBlanks, content.options]);
 
   // 4. DANH SÁCH ĐÁP ÁN SỔ RA CHO TỪNG SỐ (TỰ ĐỘNG ẨN CÁC ĐÁP ÁN ĐÃ CHỌN Ở SỐ KHÁC)
   const getAvailableWordsForBlank = (blankId: string) => {

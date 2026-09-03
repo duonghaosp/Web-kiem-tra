@@ -1,6 +1,7 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Assignment, Question } from '../../types/database';
 import { LatexRenderer } from '../common/LatexRenderer';
+import { normalizeQuestionList } from '../../lib/questionUtils';
 import {
   X,
   Eye,
@@ -47,8 +48,10 @@ export const AssignmentPreviewModal: React.FC<AssignmentPreviewModalProps> = ({
     window.print();
   };
 
+  const normalizedQuestions = normalizeQuestionList(questions);
+
   // Tính tổng điểm
-  const totalScore = questions.reduce((sum, q) => sum + (q.points || 1.0), 0);
+  const totalScore = normalizedQuestions.reduce((sum, q) => sum + (q.points || 1.0), 0);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/70 backdrop-blur-xs overflow-y-auto">
@@ -142,14 +145,14 @@ export const AssignmentPreviewModal: React.FC<AssignmentPreviewModalProps> = ({
 
         {/* NỘI DUNG DANH SÁCH CÂU HỎI */}
         <div className="flex-1 overflow-y-auto space-y-4 pr-1 sm:pr-2">
-          {questions.length === 0 ? (
+          {normalizedQuestions.length === 0 ? (
             <div className="py-12 text-center text-slate-400 text-xs border-2 border-dashed border-slate-200 rounded-3xl space-y-2">
               <FileText className="w-10 h-10 mx-auto text-slate-300" />
               <p className="font-bold text-slate-700 text-sm">Chưa có dữ liệu câu hỏi cho đề thi này</p>
               <p className="text-slate-400">Cô có thể bấm vào "Làm thử" để trải nghiệm trực tiếp đề bài.</p>
             </div>
           ) : (
-            questions.map((q, qIndex) => {
+            normalizedQuestions.map((q, qIndex) => {
               const content = q.content_json || {};
               const points = q.points || 1.0;
               const type = q.type;

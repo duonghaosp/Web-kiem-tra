@@ -427,6 +427,51 @@ export async function parseWordExam(file: File, defaultGrade: number = 7): Promi
       const parsed = extractOptions(rawBlock);
 
       if (parsed.options.length >= 2) {
+        // Kiểm tra xem đây có phải là câu Điền vào chỗ trống hay không
+        const textLower = parsed.questionText.toLowerCase();
+        const isFill =
+          (textLower.match(/\(\s*\d+\s*\)[\s._\-–—]*/g) || []).length >= 2 ||
+          textLower.includes('hoàn thành đoạn') ||
+          textLower.includes('sử dụng những cụm từ') ||
+          textLower.includes('sử dụng các từ') ||
+          textLower.includes('điền vào chỗ trống');
+
+        if (isFill) {
+          const parenMatches = parsed.questionText.match(/\(\s*\d+\s*\)/g) || [];
+          const blankCount = Math.max(parenMatches.length, parsed.options.length, 1);
+          const blankAnswersObj: Record<string, string[]> = {};
+          parsed.options.forEach((opt, idx) => {
+            const cleanOpt = String(opt).replace(/^[A-D][.\s:–—)]+/, '').trim();
+            blankAnswersObj[`blank_${idx + 1}`] = [cleanOpt || opt];
+          });
+
+          questions.push({
+            id: generateQuestionId(),
+            grade: defaultGrade,
+            type: 'fill_blank',
+            raw_number: qNum,
+            warnings: [],
+            has_explicit_answer: true,
+            title: parsed.questionText.substring(0, 120),
+            content_json: {
+              template: parsed.questionText,
+              question: parsed.questionText,
+              options: parsed.options,
+              blanks: Array.from({ length: blankCount }, (_, i) => ({
+                id: `blank_${i + 1}`,
+                placeholder: `Chọn đáp án (${i + 1})...`,
+              })),
+            },
+            correct_answer_json: {
+              blank_answers: blankAnswersObj,
+            },
+            explanation: explanation || null,
+            points: 1.0,
+            tags: ['Điền từ', 'Word Import', `Khối ${defaultGrade}`],
+          });
+          return;
+        }
+
         // Câu hỏi trắc nghiệm hợp lệ
         let correctIdx = 0; // Mặc định là A
         let hasExplicitAnswer = false;
