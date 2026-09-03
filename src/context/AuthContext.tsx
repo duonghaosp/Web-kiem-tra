@@ -73,19 +73,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         setProfile(parsed);
         setUser({ id: parsed.id, email: `${parsed.username}@diali.edu.vn` });
       } else {
-        // Mặc định tài khoản Giáo viên (Dương Thu Hảo)
-        const defaultTeacher: Profile = {
-          id: 'teacher-duong-thu-hao',
-          username: 'duongthuhao_diali',
-          full_name: 'Dương Thu Hảo',
-          role: 'teacher',
-          xp: 0,
-          level: 1,
-          avatar_url: 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=200&q=80',
-        };
-        setProfile(defaultTeacher);
-        setUser({ id: defaultTeacher.id, email: 'duongthuhao@diali.edu.vn' });
-        localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(defaultTeacher));
+        // Thiết bị mới / học sinh quét mã QR chưa đăng nhập
+        setProfile(null);
+        setUser(null);
       }
     } catch (e) {
       console.warn('Lỗi đọc Auth từ LocalStorage:', e);
@@ -347,7 +337,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(null);
   };
 
-  const role: UserRole = profile?.role || 'teacher';
+  const role: UserRole = profile?.role || 'student';
 
   return (
     <AuthContext.Provider

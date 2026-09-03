@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
@@ -18,7 +18,7 @@ import {
   UserCheck,
   LogOut,
 } from 'lucide-react';
-import { Question, Assignment } from '../types/database';
+import { Question, Assignment, Profile } from '../types/database';
 import { SingleChoiceQuestion } from '../components/questions/SingleChoiceQuestion';
 import { MultipleChoiceQuestion } from '../components/questions/MultipleChoiceQuestion';
 import { TrueFalseQuestion } from '../components/questions/TrueFalseQuestion';
@@ -28,6 +28,7 @@ import { EssayQuestion } from '../components/questions/EssayQuestion';
 import { gradeEntireExam } from '../lib/gradingEngine';
 import { triggerCelebration } from '../lib/gamification';
 import { fetchAssignmentById, saveStudentSubmission } from '../lib/assignmentCloudSync';
+import { getStoredStudents, INITIAL_CLASSES } from '../data/studentsData';
 
 // Đề thi mẫu chuẩn hóa 6 dạng câu hỏi cho học sinh làm bài
 const SAMPLE_EXAM_QUESTIONS: Question[] = [
@@ -107,18 +108,18 @@ export const ExamTakingPage: React.FC = () => {
   const { profile, role, signInAsStudent, signOut, quickLogin } = useAuth();
   const schoolLogo = localStorage.getItem('geo_school_logo') || '';
 
-  // Nhận diện Học Sinh Mẫu hoặc Giáo Viên đang thử nghiệm
+  // Nhận diện xem giáo viên có đang chủ động xem thử đề thi hay không
+  const isTeacherPreviewing = sessionStorage.getItem('is_teacher_previewing') === 'true';
+
   const isMockStudent = React.useMemo(() => {
     return Boolean(
-      role === 'teacher' ||
-      role === 'admin' ||
-      sessionStorage.getItem('is_teacher_previewing') === 'true' ||
+      isTeacherPreviewing ||
       profile?.full_name?.toLowerCase().includes('học sinh mẫu') ||
       profile?.username?.toLowerCase().includes('hoc_sinh_mau') ||
       profile?.student_code === 'HS_MOCK' ||
       profile?.student_code === 'HS0601'
     );
-  }, [role, profile]);
+  }, [isTeacherPreviewing, profile]);
 
   const [currentAssignment, setCurrentAssignment] = useState<Assignment | null>(() => {
     try {
@@ -137,6 +138,24 @@ export const ExamTakingPage: React.FC = () => {
 
   const [loadingAssignment, setLoadingAssignment] = useState<boolean>(!currentAssignment);
 
+  // Form đăng nhập học sinh: 'by_name' (chọn tên trong lớp) hoặc 'by_code' (nhập mã học sinh)
+  const [loginMethod, setLoginMethod] = useState<'by_name' | 'by_code'>('by_name');
+  const [selectedClass, setSelectedClass] = useState<string>('Lớp 7A1');
+  const [selectedStudentId, setSelectedStudentId] = useState<string>('');
+  const [inputStudentCode, setInputStudentCode] = useState<string>('');
+  const [inputGrade, setInputGrade] = useState<number>(() => currentAssignment?.grade || 7);
+  const [authError, setAuthError] = useState<string>('');
+  const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
+
+  const allSystemStudents = useMemo<Profile[]>(() => getStoredStudents(), []);
+
+  // Danh sách học sinh theo lớp đang chọn
+  const classStudents = useMemo<Profile[]>(() => {
+    return allSystemStudents
+      .filter((s: Profile) => s.class_name === selectedClass)
+      .sort((a: Profile, b: Profile) => a.full_name.localeCompare(b.full_name, 'vi'));
+  }, [allSystemStudents, selectedClass]);
+
   // Tự động tải đề thi từ Supabase Cloud khi học sinh quét mã QR từ điện thoại
   useEffect(() => {
     let isMounted = true;
@@ -153,6 +172,9 @@ export const ExamTakingPage: React.FC = () => {
         if (asg) {
           setCurrentAssignment(asg);
           setInputGrade(asg.grade || 7);
+          if (asg.target_ids && asg.target_ids.length > 0) {
+            setSelectedClass(asg.target_ids[0]);
+          }
         }
         setLoadingAssignment(false);
       }
@@ -163,15 +185,11 @@ export const ExamTakingPage: React.FC = () => {
     };
   }, [id]);
 
-  // Form đăng nhập mã học sinh khi vào qua link / quét mã QR
-  const [inputStudentCode, setInputStudentCode] = useState<string>('');
-  const [inputGrade, setInputGrade] = useState<number>(() => currentAssignment?.grade || 7);
-  const [authError, setAuthError] = useState<string>('');
-  const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
-
-  // Cho phép học sinh, giáo viên hoặc học sinh mẫu đều được vào làm bài
+  // CHỈ CHO PHÉP VÀO LÀM BÀI NẾU:
+  // 1. Profile là học sinh thực thụ (role === 'student')
+  // 2. HOẶC giáo viên chủ động bấm nút "Làm thử đề thi" (isTeacherPreviewing)
   const isStudentLoggedIn = Boolean(
-    profile && (profile.role === 'student' || profile.role === 'teacher' || isMockStudent)
+    profile && (profile.role === 'student' || isTeacherPreviewing)
   );
 
   const [questions, setQuestions] = useState<Question[]>(() => {
@@ -235,6 +253,29 @@ export const ExamTakingPage: React.FC = () => {
 
     if (result.error) {
       setAuthError(result.error.message || 'Mã học sinh không tồn tại hoặc sai khối lớp. Vui lòng kiểm tra lại!');
+    }
+  };
+
+  const handleSelectNameLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setAuthError('');
+    if (!selectedStudentId) {
+      setAuthError('Em vui lòng chọn đúng họ tên của mình trong danh sách lớp!');
+      return;
+    }
+
+    const student = allSystemStudents.find((s: Profile) => s.id === selectedStudentId);
+    if (!student) {
+      setAuthError('Không tìm thấy thông tin học sinh đã chọn. Vui lòng thử lại!');
+      return;
+    }
+
+    setIsAuthenticating(true);
+    const result = await signInAsStudent(student.student_code || student.username, inputGrade);
+    setIsAuthenticating(false);
+
+    if (result.error) {
+      setAuthError(result.error.message || 'Lỗi xác nhận danh tính học sinh!');
     }
   };
 
@@ -416,12 +457,66 @@ export const ExamTakingPage: React.FC = () => {
             </p>
           </div>
 
-          <form onSubmit={handleStudentLogin} className="space-y-4">
-            <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-900 flex items-start gap-2.5">
-              <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <span>
-                Em hãy nhập <strong>Mã số học sinh</strong> và chọn đúng <strong>Khối lớp</strong> để hệ thống ghi nhận điểm số và cô Hảo gửi lời phê nhé!
-              </span>
+          {/* Thông báo chế độ Giáo viên nếu đang dùng tài khoản Cô Hảo */}
+          {profile?.role === 'teacher' && (
+            <div className="p-3.5 bg-teal-50 rounded-2xl border border-teal-200 text-xs text-teal-950 space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-bold flex items-center gap-1.5 text-teal-800">
+                  <Sparkles className="w-4 h-4 text-teal-600" />
+                  Cô Dương Thu Hảo (Giáo viên)
+                </span>
+                <span className="text-[10px] bg-teal-100 text-teal-800 px-2 py-0.5 rounded-full font-bold">
+                  Bàn làm việc
+                </span>
+              </div>
+              <p className="text-[11px] text-teal-800/80">
+                Cô đang mở đề thi này trên thiết bị của mình. Cô có thể bấm nút dưới để xem/làm thử đề thi, hoặc để học sinh tự chọn tên làm bài ở khung bên dưới:
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  sessionStorage.setItem('is_teacher_previewing', 'true');
+                  quickLogin('student', 'Cô Hảo (Làm Thử Đề)', currentAssignment?.grade || 7);
+                }}
+                className="w-full py-2 bg-teal-700 hover:bg-teal-800 text-white rounded-xl font-bold text-xs shadow-xs transition active:scale-95 cursor-pointer flex items-center justify-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                Làm Thử Đề Thi Với Tư Cách Giáo Viên 👩‍🏫
+              </button>
+            </div>
+          )}
+
+          {/* CHỌN CÁCH ĐĂNG NHẬP DÀNH CHO HỌC SINH */}
+          <div className="space-y-4">
+            <div className="flex items-center p-1 bg-slate-100 rounded-2xl">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginMethod('by_name');
+                  setAuthError('');
+                }}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  loginMethod === 'by_name'
+                    ? 'bg-white text-ocean-700 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                👤 Chọn Tên Trong Lớp (Dễ nhất)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginMethod('by_code');
+                  setAuthError('');
+                }}
+                className={`flex-1 py-2 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  loginMethod === 'by_code'
+                    ? 'bg-white text-ocean-700 shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                🔑 Nhập Mã Học Sinh
+              </button>
             </div>
 
             {authError && (
@@ -431,60 +526,128 @@ export const ExamTakingPage: React.FC = () => {
               </div>
             )}
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Khối lớp của em:
-              </label>
-              <div className="grid grid-cols-4 gap-2">
-                {[6, 7, 8, 9].map((g) => (
-                  <button
-                    key={g}
-                    type="button"
-                    onClick={() => setInputGrade(g)}
-                    className={`py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
-                      inputGrade === g
-                        ? 'bg-ocean-600 text-white border-ocean-600 shadow-xs'
-                        : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
-                    }`}
+            {/* CÁCH 1: CHỌN TÊN TRONG DANH SÁCH LỚP */}
+            {loginMethod === 'by_name' ? (
+              <form onSubmit={handleSelectNameLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Lớp của em:
+                  </label>
+                  <select
+                    value={selectedClass}
+                    onChange={(e) => {
+                      setSelectedClass(e.target.value);
+                      setSelectedStudentId('');
+                    }}
+                    className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-ocean-500 bg-white"
                   >
-                    Khối {g}
-                  </button>
-                ))}
-              </div>
-            </div>
+                    {(currentAssignment?.target_ids && currentAssignment.target_ids.length > 0
+                      ? currentAssignment.target_ids
+                      : INITIAL_CLASSES.filter((c) => Number(c.grade) === Number(inputGrade)).map((c) => c.name)
+                    ).map((cName) => (
+                      <option key={cName} value={cName}>
+                        {cName}
+                      </option>
+                    ))}
+                  </select>
+                </div>
 
-            <div>
-              <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                Mã số học sinh của em:
-              </label>
-              <input
-                type="text"
-                value={inputStudentCode}
-                onChange={(e) => setInputStudentCode(e.target.value.toUpperCase())}
-                placeholder="Ví dụ: HS071, HS061..."
-                required
-                autoFocus
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-ocean-500 font-mono text-sm tracking-wider font-bold uppercase"
-              />
-              <p className="text-[11px] text-slate-400 mt-1">
-                Gợi ý: Dùng mã học sinh được cấp trên lớp (Ví dụ: HS071, HS072...)
-              </p>
-            </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Họ và tên của em ({classStudents.length} học sinh):
+                  </label>
+                  <select
+                    value={selectedStudentId}
+                    onChange={(e) => setSelectedStudentId(e.target.value)}
+                    required
+                    className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-ocean-500 bg-white"
+                  >
+                    <option value="">-- Bấm vào đây để chọn đúng tên của em --</option>
+                    {classStudents.map((st: Profile) => (
+                      <option key={st.id} value={st.id}>
+                        {st.full_name} {st.student_code ? `(${st.student_code})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Gợi ý: Tìm tên của em theo danh sách bảng chữ cái để hệ thống lưu điểm cho em nhé!
+                  </p>
+                </div>
 
-            <button
-              type="submit"
-              disabled={isAuthenticating}
-              className="w-full py-3.5 bg-gradient-to-r from-ocean-600 to-teal-600 hover:from-ocean-700 hover:to-teal-700 text-white rounded-2xl font-black text-sm shadow-md transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
-            >
-              {isAuthenticating ? (
-                <span>Đang kiểm tra mã...</span>
-              ) : (
-                <>
-                  <LogIn className="w-4 h-4" />
-                  Xác Nhận & Bắt Đầu Làm Bài Ngay 🚀
-                </>
-              )}
-            </button>
+                <button
+                  type="submit"
+                  disabled={isAuthenticating || !selectedStudentId}
+                  className="w-full py-3.5 bg-gradient-to-r from-ocean-600 to-teal-600 hover:from-ocean-700 hover:to-teal-700 text-white rounded-2xl font-black text-sm shadow-md transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isAuthenticating ? (
+                    <span>Đang xác nhận tên em...</span>
+                  ) : (
+                    <>
+                      <LogIn className="w-4 h-4" />
+                      Xác Nhận Tên & Bắt Đầu Làm Bài Ngay 🚀
+                    </>
+                  )}
+                </button>
+              </form>
+            ) : (
+              /* CÁCH 2: NHẬP MÃ SỐ HỌC SINH */
+              <form onSubmit={handleStudentLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Khối lớp của em:
+                  </label>
+                  <div className="grid grid-cols-4 gap-2">
+                    {[6, 7, 8, 9].map((g) => (
+                      <button
+                        key={g}
+                        type="button"
+                        onClick={() => setInputGrade(g)}
+                        className={`py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                          inputGrade === g
+                            ? 'bg-ocean-600 text-white border-ocean-600 shadow-xs'
+                            : 'bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100'
+                        }`}
+                      >
+                        Khối {g}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Mã số học sinh của em:
+                  </label>
+                  <input
+                    type="text"
+                    value={inputStudentCode}
+                    onChange={(e) => setInputStudentCode(e.target.value.toUpperCase())}
+                    placeholder="Ví dụ: HS071, HS061..."
+                    required
+                    autoFocus
+                    className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-ocean-500 font-mono text-sm tracking-wider font-bold uppercase"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1">
+                    Gợi ý: Dùng mã học sinh được cấp trên lớp (Ví dụ: HS071, HS072...)
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isAuthenticating}
+                  className="w-full py-3.5 bg-gradient-to-r from-ocean-600 to-teal-600 hover:from-ocean-700 hover:to-teal-700 text-white rounded-2xl font-black text-sm shadow-md transition active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {isAuthenticating ? (
+                    <span>Đang kiểm tra mã...</span>
+                  ) : (
+                    <>
+                      <LogIn className="w-4 h-4" />
+                      Xác Nhận Mã & Bắt Đầu Làm Bài Ngay 🚀
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
 
             {/* Nút đăng nhập nhanh chế độ Thử nghiệm dành cho Giáo viên */}
             <div className="pt-2 border-t border-slate-100 text-center">
@@ -500,7 +663,7 @@ export const ExamTakingPage: React.FC = () => {
                 <span>Vào Thử Nghiệm Ngay Với "Học Sinh Mẫu" 🧪</span>
               </button>
             </div>
-          </form>
+          </div>
         </div>
       </div>
     );
@@ -541,7 +704,10 @@ export const ExamTakingPage: React.FC = () => {
               </span>
               <button
                 type="button"
-                onClick={() => signOut()}
+                onClick={async () => {
+                  sessionStorage.removeItem('is_teacher_previewing');
+                  await signOut();
+                }}
                 className="text-[10px] text-ocean-600 hover:text-ocean-800 underline font-semibold cursor-pointer"
                 title="Đăng xuất để đổi tài khoản học sinh khác"
               >
