@@ -19,6 +19,7 @@ import {
   ShieldCheck,
   FileJson,
   RotateCcw,
+  Lock,
 } from 'lucide-react';
 import { triggerCelebration } from '../lib/gamification';
 
@@ -55,6 +56,9 @@ export const GeneralSettingsPage: React.FC = () => {
   );
   const [teacherPhone, setTeacherPhone] = useState(
     () => localStorage.getItem('geo_teacher_phone') || ''
+  );
+  const [teacherPassword, setTeacherPassword] = useState(
+    () => localStorage.getItem('geo_teacher_secret_password') || '123456'
   );
   const [defaultFeedback, setDefaultFeedback] = useState(
     () => localStorage.getItem('geo_default_feedback') || 'Cô khen ngợi tinh thần làm bài chăm chỉ của em!'
@@ -152,6 +156,7 @@ export const GeneralSettingsPage: React.FC = () => {
       localStorage.setItem('geo_teacher_title', teacherTitle.trim());
       localStorage.setItem('geo_teacher_email', teacherEmail.trim());
       localStorage.setItem('geo_teacher_phone', teacherPhone.trim());
+      localStorage.setItem('geo_teacher_secret_password', teacherPassword.trim());
       localStorage.setItem('geo_default_feedback', defaultFeedback.trim());
       localStorage.setItem('geo_weak_threshold', String(weakThreshold));
       localStorage.setItem('geo_allow_late', String(allowLateSubmission));
@@ -615,6 +620,25 @@ export const GeneralSettingsPage: React.FC = () => {
                   placeholder="VD: Cô khen ngợi tinh thần làm bài chăm chỉ của em!"
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm text-slate-800 focus:ring-2 focus:ring-ocean-500"
                 />
+              </div>
+
+              <div className="md:col-span-2 p-4 bg-amber-50/80 border border-amber-200 rounded-2xl space-y-2">
+                <label className="block text-xs font-bold text-amber-950 flex items-center gap-1.5">
+                  <Lock className="w-4 h-4 text-amber-700" />
+                  Mật Khẩu Đăng Nhập Giáo Viên (Bảo Mật Bàn Làm Việc):
+                </label>
+                <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                  <input
+                    type="password"
+                    value={teacherPassword}
+                    onChange={(e) => setTeacherPassword(e.target.value)}
+                    placeholder="Nhập mật khẩu bí mật của cô..."
+                    className="w-full sm:w-64 px-4 py-2.5 rounded-xl border border-amber-300 text-xs sm:text-sm font-bold text-slate-900 bg-white focus:ring-2 focus:ring-amber-500"
+                  />
+                  <span className="text-[11px] text-amber-800 leading-relaxed">
+                    💡 Đây là mật khẩu bí mật của Cô Hảo để truy cập bàn làm việc, quản lý đề thi và chấm điểm. Học sinh không biết mật khẩu này sẽ tuyệt đối không thể đăng nhập vào được.
+                  </span>
+                </div>
               </div>
             </div>
           </div>

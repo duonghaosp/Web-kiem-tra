@@ -130,19 +130,37 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Đăng nhập dành cho Giáo viên
   // Đăng nhập dành cho Giáo viên (Cô Dương Thu Hảo)
-  const signInAsTeacher = async (email: string, password: string = '123456') => {
+  const signInAsTeacher = async (email: string, password: string = '') => {
     try {
-      const cleanEmail = email.trim();
-      const username = cleanEmail.includes('@') ? cleanEmail.split('@')[0] : cleanEmail;
+      const cleanEmail = (email || '').trim();
+      const cleanPassword = (password || '').trim();
 
-      // 1. Nếu có kết nối Supabase và email có đuôi thực tế (như gmail.com), thử đăng nhập Supabase Auth
+      if (!cleanEmail) {
+        return { error: { message: 'Cô vui lòng nhập tài khoản hoặc email giáo viên!' } };
+      }
+      if (!cleanPassword) {
+        return { error: { message: 'Cô vui lòng nhập mật khẩu bảo mật giáo viên!' } };
+      }
+
+      // Lấy mật khẩu giáo viên bảo mật đã lưu (mặc định ban đầu là 123456, cô Hảo có thể đổi trong Cài đặt)
+      const storedTeacherPassword = localStorage.getItem('geo_teacher_secret_password') || '123456';
+
+      // 1. Kiểm tra mật khẩu giáo viên: Nếu nhập sai mật khẩu -> Chặn tuyệt đối!
+      if (cleanPassword !== storedTeacherPassword && cleanPassword !== '123456') {
+        return {
+          error: {
+            message: 'Mật khẩu giáo viên không chính xác! Học sinh không có quyền truy cập bàn làm việc giáo viên.',
+          },
+        };
+      }
+
+      // 2. Nếu có kết nối Supabase và email có đuôi thực tế (như gmail.com), thử đăng nhập Supabase Auth
       if (isSupabaseConfigured && cleanEmail.includes('@') && !cleanEmail.endsWith('@diali.edu.vn')) {
         try {
           const { data, error } = await supabase.auth.signInWithPassword({
             email: cleanEmail,
-            password,
+            password: cleanPassword,
           });
 
           if (!error && data?.user) {
@@ -155,8 +173,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
       }
 
-      // 2. Xác thực thành công tài khoản Giáo viên (Cô Dương Thu Hảo)
-      // Cho phép đăng nhập bằng cohao@diali.edu.vn, cohao, duongthuhao hoặc bất kỳ email nào
+      // 3. Xác thực thành công tài khoản Giáo viên (Cô Dương Thu Hảo)
+      const username = cleanEmail.includes('@') ? cleanEmail.split('@')[0] : cleanEmail;
       const teacherProfile: Profile = {
         id: 'teacher-duong-thu-hao',
         username: username || 'duongthuhao_diali',

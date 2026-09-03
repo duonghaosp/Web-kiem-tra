@@ -174,15 +174,12 @@ export const LoginPage: React.FC = () => {
                 name="teacher_username_unique"
                 value={teacherEmail}
                 onChange={(e) => setTeacherEmail(e.target.value)}
-                placeholder="VD: cohao@diali.edu.vn hoặc cohao"
+                placeholder="Nhập tài khoản hoặc email của cô..."
                 autoComplete="off"
                 data-form-type="other"
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-ocean-500"
                 required
               />
-              <p className="text-[11px] text-slate-400 mt-1">
-                (Cô có thể nhập <span className="font-bold text-slate-600">cohao@diali.edu.vn</span> hoặc tên <span className="font-bold text-slate-600">cohao</span>)
-              </p>
             </div>
 
             <div>
@@ -195,7 +192,7 @@ export const LoginPage: React.FC = () => {
                   name="teacher_pwd_unique"
                   value={teacherPassword}
                   onChange={(e) => setTeacherPassword(e.target.value)}
-                  placeholder="Nhập mật khẩu (VD: 123456)..."
+                  placeholder="Nhập mật khẩu bảo mật..."
                   autoComplete="new-password"
                   data-form-type="other"
                   className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 text-xs sm:text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-ocean-500"
@@ -213,20 +210,6 @@ export const LoginPage: React.FC = () => {
               {loading ? 'Đang xác thực...' : 'Đăng Nhập Bàn Làm Việc'}
               <ArrowRight className="w-4 h-4" />
             </button>
-
-            <div className="pt-2 border-t border-slate-100 text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  quickLogin('teacher', 'Cô Dương Thu Hảo');
-                  navigate('/teacher-dashboard');
-                }}
-                className="inline-flex items-center gap-1.5 text-xs text-ocean-700 hover:text-ocean-800 font-bold hover:underline cursor-pointer py-1"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-amber-500" />
-                <span>⚡ Bấm vào đây để Đăng Nhập Nhanh (1 chạm)</span>
-              </button>
-            </div>
           </form>
         )}
       </div>
