@@ -29,6 +29,7 @@ import {
   saveStoredStudents,
   reindexAllStudentCodes,
 } from '../data/studentsData';
+import { saveStudentsToCloud, fetchStudentsFromCloud, autoSyncStudentsWithCloud } from '../lib/studentCloudSync';
 
 export const ClassesManagementPage: React.FC = () => {
   const [academicYear, setAcademicYear] = useState<string>(() => {
@@ -85,10 +86,10 @@ export const ClassesManagementPage: React.FC = () => {
 
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  // Hàm lưu học sinh xuống LocalStorage
+  // Hàm lưu học sinh xuống LocalStorage & Supabase Cloud
   const saveStudents = (newStudents: Profile[]) => {
     setStudents(newStudents);
-    localStorage.setItem('geo_classes_students', JSON.stringify(newStudents));
+    saveStudentsToCloud(newStudents);
   };
 
   // Hàm lưu danh sách lớp xuống LocalStorage
@@ -130,9 +131,16 @@ export const ClassesManagementPage: React.FC = () => {
   const [selectedStudentForBadge, setSelectedStudentForBadge] = useState<Profile | null>(null);
   const [, setBadgeRefresh] = useState<number>(0);
 
-  // Tải danh sách lớp từ Supabase nếu có kết nối
+  // Tải danh sách lớp và đồng bộ học sinh từ Supabase Cloud
   useEffect(() => {
-    async function loadClasses() {
+    async function loadData() {
+      // 1. Tự động đồng bộ hai chiều học sinh giữa LocalStorage và Cloud
+      await autoSyncStudentsWithCloud();
+      const cloudStudents = await fetchStudentsFromCloud();
+      if (cloudStudents && cloudStudents.length > 0) {
+        setStudents(cloudStudents);
+      }
+
       if (isSupabaseConfigured) {
         try {
           const { data, error } = await supabase
@@ -150,7 +158,7 @@ export const ClassesManagementPage: React.FC = () => {
         }
       }
     }
-    loadClasses();
+    loadData();
   }, []);
 
   // Lọc các lớp của khối đang chọn

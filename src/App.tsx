@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { autoSyncStudentsWithCloud } from './lib/studentCloudSync';
 import { Navbar } from './components/layout/Navbar';
 import { Sidebar } from './components/layout/Sidebar';
 import { Footer } from './components/layout/Footer';
@@ -76,6 +77,10 @@ const ExamLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 };
 
 export const App: React.FC = () => {
+  useEffect(() => {
+    autoSyncStudentsWithCloud();
+  }, []);
+
   return (
     <AuthProvider>
       <BrowserRouter>

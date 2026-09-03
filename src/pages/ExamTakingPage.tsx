@@ -28,6 +28,7 @@ import { EssayQuestion } from '../components/questions/EssayQuestion';
 import { gradeEntireExam } from '../lib/gradingEngine';
 import { triggerCelebration } from '../lib/gamification';
 import { fetchAssignmentById, saveStudentSubmission } from '../lib/assignmentCloudSync';
+import { fetchStudentsFromCloud } from '../lib/studentCloudSync';
 import { getStoredStudents, INITIAL_CLASSES } from '../data/studentsData';
 import { normalizeQuestion, normalizeQuestionList } from '../lib/questionUtils';
 
@@ -161,7 +162,22 @@ export const ExamTakingPage: React.FC = () => {
   const [authError, setAuthError] = useState<string>('');
   const [isAuthenticating, setIsAuthenticating] = useState<boolean>(false);
 
-  const allSystemStudents = useMemo<Profile[]>(() => getStoredStudents(), []);
+  const [allSystemStudents, setAllSystemStudents] = useState<Profile[]>(() => getStoredStudents());
+
+  // Tự động tải danh sách học sinh thật từ Supabase Cloud về điện thoại
+  useEffect(() => {
+    let isMounted = true;
+    async function loadCloudStudents() {
+      const cloudStudents = await fetchStudentsFromCloud();
+      if (isMounted && cloudStudents && cloudStudents.length > 0) {
+        setAllSystemStudents(cloudStudents);
+      }
+    }
+    loadCloudStudents();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // Danh sách học sinh theo lớp đang chọn (SẮP XẾP CHUẨN THEO TÊN HỌC SINH VIỆT NAM: A, B, C...)
   const classStudents = useMemo<Profile[]>(() => {
