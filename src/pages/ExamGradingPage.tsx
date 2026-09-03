@@ -35,6 +35,7 @@ import { triggerCelebration } from '../lib/gamification';
 import { BadgeList } from '../components/common/BadgeList';
 import { getStudentBadges, toggleBadgeForStudent } from '../data/badgeService';
 import { playSoftClick } from '../utils/soundEffects';
+import { fetchStudentSubmissionsFromCloud, fetchAssignmentsFromCloud } from '../lib/assignmentCloudSync';
 
 // Danh sách bài nộp mẫu của học sinh (Rỗng ban đầu khi giáo viên chưa giao đề thi)
 const DEFAULT_SUBMISSIONS: any[] = [];
@@ -172,8 +173,8 @@ export const ExamGradingPage: React.FC = () => {
     return [];
   });
 
-  // Đọc danh sách các đợt giao bài từ LocalStorage
-  const [assignmentsList] = useState<any[]>(() => {
+  // Đọc danh sách các đợt giao bài từ LocalStorage và Cloud
+  const [assignmentsList, setAssignmentsList] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('geo_assignments');
       if (saved) {
@@ -185,6 +186,23 @@ export const ExamGradingPage: React.FC = () => {
     }
     return [];
   });
+
+  // Tự động đồng bộ các bài nộp từ học sinh và đợt giao bài từ Supabase Cloud
+  useEffect(() => {
+    async function syncGradingCloud() {
+      const [cloudSubs, cloudAsgs] = await Promise.all([
+        fetchStudentSubmissionsFromCloud(),
+        fetchAssignmentsFromCloud(),
+      ]);
+      if (cloudSubs && cloudSubs.length > 0) {
+        setSubmissions(cloudSubs);
+      }
+      if (cloudAsgs && cloudAsgs.length > 0) {
+        setAssignmentsList(cloudAsgs);
+      }
+    }
+    syncGradingCloud();
+  }, []);
 
   const saveSubmissions = (newSubs: any[]) => {
     setSubmissions(newSubs);

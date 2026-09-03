@@ -23,6 +23,7 @@ import {
 import { LevelProgressBar } from '../components/gamification/LevelProgressBar';
 import { BadgeList } from '../components/common/BadgeList';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { fetchAssignmentsFromCloud } from '../lib/assignmentCloudSync';
 import { getStudentBadges, getStudentLookupKeys, ALL_BADGES } from '../data/badgeService';
 import { GeoGlobeSticker, GeoTelescopeSticker, GeoCompassSticker, GeoMountainSticker } from '../components/common/GeoStickers';
 import { playSoftClick } from '../utils/soundEffects';
@@ -210,6 +211,9 @@ export const StudentDashboardPage: React.FC = () => {
     };
 
     reloadData();
+    fetchAssignmentsFromCloud().then(() => {
+      reloadData();
+    });
     window.addEventListener('storage', reloadData);
     window.addEventListener('geo_notifications_updated', reloadData);
     window.addEventListener('geo_assignments_updated', reloadData);

@@ -49,6 +49,7 @@ import { AssignmentQrModal } from '../components/assignments/AssignmentQrModal';
 import { AssignmentPreviewModal } from '../components/assignments/AssignmentPreviewModal';
 import { DeleteAssignmentWarningModal } from '../components/assignments/DeleteAssignmentWarningModal';
 import { AssignmentTrashModal } from '../components/assignments/AssignmentTrashModal';
+import { saveAssignmentsToCloud, fetchAssignmentsFromCloud } from '../lib/assignmentCloudSync';
 
 // Các hình thức đánh giá kiểm tra chuẩn theo Bộ Giáo dục & Đào tạo
 interface AssessmentCategory {
@@ -140,9 +141,19 @@ export const AssignmentsPage: React.FC = () => {
 
   const saveAssignments = (newAsgs: Assignment[]) => {
     setAssignments(newAsgs);
-    localStorage.setItem('geo_assignments', JSON.stringify(newAsgs));
-    window.dispatchEvent(new Event('geo_assignments_updated'));
+    saveAssignmentsToCloud(newAsgs);
   };
+
+  // Tự động đồng bộ đề thi với Supabase Cloud khi vào trang
+  useEffect(() => {
+    async function syncAssignmentsWithCloud() {
+      const cloudAsgs = await fetchAssignmentsFromCloud();
+      if (cloudAsgs && cloudAsgs.length > 0) {
+        setAssignments(cloudAsgs);
+      }
+    }
+    syncAssignmentsWithCloud();
+  }, []);
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [qrModalAssignment, setQrModalAssignment] = useState<Assignment | null>(null);

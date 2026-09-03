@@ -18,7 +18,7 @@ import {
   UserCheck,
   LogOut,
 } from 'lucide-react';
-import { Question } from '../types/database';
+import { Question, Assignment } from '../types/database';
 import { SingleChoiceQuestion } from '../components/questions/SingleChoiceQuestion';
 import { MultipleChoiceQuestion } from '../components/questions/MultipleChoiceQuestion';
 import { TrueFalseQuestion } from '../components/questions/TrueFalseQuestion';
@@ -27,6 +27,7 @@ import { DragDropQuestion } from '../components/questions/DragDropQuestion';
 import { EssayQuestion } from '../components/questions/EssayQuestion';
 import { gradeEntireExam } from '../lib/gradingEngine';
 import { triggerCelebration } from '../lib/gamification';
+import { fetchAssignmentById, saveStudentSubmission } from '../lib/assignmentCloudSync';
 
 // Đề thi mẫu chuẩn hóa 6 dạng câu hỏi cho học sinh làm bài
 const SAMPLE_EXAM_QUESTIONS: Question[] = [
@@ -119,19 +120,47 @@ export const ExamTakingPage: React.FC = () => {
     );
   }, [role, profile]);
 
-  const currentAssignment = React.useMemo(() => {
+  const [currentAssignment, setCurrentAssignment] = useState<Assignment | null>(() => {
     try {
       const savedAsgs = localStorage.getItem('geo_assignments');
       if (savedAsgs !== null) {
         const asgs = JSON.parse(savedAsgs);
         if (Array.isArray(asgs)) {
-          return asgs.find((a: any) => a.id === id) || null;
+          return asgs.find((a: any) => String(a.id) === String(id)) || null;
         }
       }
     } catch (e) {
       console.warn('Lỗi đọc assignment:', e);
     }
     return null;
+  });
+
+  const [loadingAssignment, setLoadingAssignment] = useState<boolean>(!currentAssignment);
+
+  // Tự động tải đề thi từ Supabase Cloud khi học sinh quét mã QR từ điện thoại
+  useEffect(() => {
+    let isMounted = true;
+    async function loadAssignmentData() {
+      if (!id) {
+        setLoadingAssignment(false);
+        return;
+      }
+      if (!currentAssignment) {
+        setLoadingAssignment(true);
+      }
+      const asg = await fetchAssignmentById(id);
+      if (isMounted) {
+        if (asg) {
+          setCurrentAssignment(asg);
+          setInputGrade(asg.grade || 7);
+        }
+        setLoadingAssignment(false);
+      }
+    }
+    loadAssignmentData();
+    return () => {
+      isMounted = false;
+    };
   }, [id]);
 
   // Form đăng nhập mã học sinh khi vào qua link / quét mã QR
@@ -145,7 +174,7 @@ export const ExamTakingPage: React.FC = () => {
     profile && (profile.role === 'student' || profile.role === 'teacher' || isMockStudent)
   );
 
-  const [questions] = useState<Question[]>(() => {
+  const [questions, setQuestions] = useState<Question[]>(() => {
     if (currentAssignment && currentAssignment.questions && currentAssignment.questions.length > 0) {
       return currentAssignment.questions;
     }
@@ -155,10 +184,21 @@ export const ExamTakingPage: React.FC = () => {
   const [currentQIndex, setCurrentQIndex] = useState<number>(0);
   const [answers, setAnswers] = useState<Record<string, any>>({});
   const initialDuration = (currentAssignment?.duration_minutes || 15) * 60;
-  const [durationSeconds] = useState<number>(initialDuration);
+  const [durationSeconds, setDurationSeconds] = useState<number>(initialDuration);
   const [timeLeft, setTimeLeft] = useState<number>(initialDuration);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const timerRef = useRef<any>(null);
+
+  // Cập nhật câu hỏi và thời gian khi assignment được nạp xong từ Cloud
+  useEffect(() => {
+    if (currentAssignment && currentAssignment.questions && currentAssignment.questions.length > 0) {
+      setQuestions(currentAssignment.questions);
+      const totalSecs = (currentAssignment.duration_minutes || 15) * 60;
+      setDurationSeconds(totalSecs);
+      setTimeLeft(totalSecs);
+      setInputGrade(currentAssignment.grade || 7);
+    }
+  }, [currentAssignment]);
 
   // Đếm ngược thời gian làm bài (CHỈ CHẠY KHI HỌC SINH ĐÃ ĐĂNG NHẬP)
   useEffect(() => {
@@ -248,46 +288,11 @@ export const ExamTakingPage: React.FC = () => {
       teacher_feedback_text: '',
     };
 
-    // 1. Cập nhật danh sách bài nộp để trang Chấm Bài của cô Hảo nhận diện ngay lập tức
-    try {
-      const existing = JSON.parse(localStorage.getItem('geo_student_submissions') || '[]');
-      const filteredExisting = existing.filter(
-        (s: any) => !(s.assignment_id === id && s.student_code === submissionData.student_code)
-      );
-      localStorage.setItem('geo_student_submissions', JSON.stringify([submissionData, ...filteredExisting]));
-      window.dispatchEvent(new Event('geo_student_submissions_updated'));
-    } catch (e) {
-      console.warn('Lỗi lưu submission:', e);
-    }
-
-    // 2. Cập nhật số lượng bài nộp (submissions_count) trong danh sách giao bài
-    try {
-      const savedAsgs = localStorage.getItem('geo_assignments');
-      if (savedAsgs) {
-        const asgs = JSON.parse(savedAsgs);
-        const updatedAsgs = asgs.map((a: any) => {
-          if (a.id === id) {
-            return {
-              ...a,
-              submissions_count: Math.min(a.total_students || 35, (a.submissions_count || 0) + 1),
-            };
-          }
-          return a;
-        });
-        localStorage.setItem('geo_assignments', JSON.stringify(updatedAsgs));
-        window.dispatchEvent(new Event('geo_assignments_updated'));
-      }
-    } catch (e) {
-      console.warn('Lỗi cập nhật submissions_count:', e);
-    }
-
-    if (isSupabaseConfigured) {
-      await supabase.from('student_results').insert(submissionData);
-    }
-
-    // 3. Lưu kết quả của đợt thi này để màn hình kết quả hiển thị ngay
+    // 1. Lưu kết quả của đợt thi này trên máy học sinh để màn hình kết quả hiển thị ngay
     localStorage.setItem(`geo_result_${id || 'asg_1'}`, JSON.stringify(submissionData));
-    window.dispatchEvent(new Event('geo_student_submissions_updated'));
+
+    // 2. Tự động đồng bộ bài nộp lên Supabase Cloud (Để bàn làm việc của Cô Hảo nhận ngay)
+    await saveStudentSubmission(submissionData);
 
     if (!gradeResult.hasEssay) {
       triggerCelebration();
@@ -298,6 +303,28 @@ export const ExamTakingPage: React.FC = () => {
 
     navigate(`/results/${id || 'asg_1'}`);
   };
+
+  // --- KHI ĐANG TẢI ĐỀ THI TỪ CLOUD (HỌC SINH QUÉT QR TRÊN ĐIỆN THOẠI) ---
+  if (loadingAssignment && !currentAssignment) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 border border-slate-200 shadow-xl text-center space-y-4 animate-in fade-in duration-300">
+          <div className="w-16 h-16 rounded-2xl bg-teal-50 text-teal-600 flex items-center justify-center mx-auto shadow-inner border border-teal-100 animate-pulse">
+            <Sparkles className="w-8 h-8 animate-spin" />
+          </div>
+          <span className="inline-block text-[11px] font-black uppercase tracking-wider bg-teal-50 text-teal-700 px-3 py-1 rounded-full border border-teal-200">
+            Đang kết nối hệ thống
+          </span>
+          <h2 className="text-lg sm:text-xl font-black text-slate-900">
+            Đang tải đề thi từ Cô Hảo...
+          </h2>
+          <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
+            Hệ thống đang đồng bộ nội dung đề kiểm tra qua Internet. Em vui lòng đợi trong giây lát nhé!
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   // --- NẾU BÀI KIỂM TRA KHÔNG TỒN TẠI HOẶC ĐÃ ĐƯỢC GIÁO VIÊN XÓA BỎ ---
   if (!currentAssignment) {
