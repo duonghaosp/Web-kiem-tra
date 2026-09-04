@@ -325,8 +325,25 @@ export const LiveGameHostPage: React.FC = () => {
 
   const syncRef = useRef<LiveGameSync | null>(null);
 
+  const currentQIndexRef = useRef(currentQIndex);
+  useEffect(() => {
+    currentQIndexRef.current = currentQIndex;
+  }, [currentQIndex]);
+
+  const questionsRef = useRef(questions);
+  useEffect(() => {
+    questionsRef.current = questions;
+  }, [questions]);
+
+  const timePerQuestionRef = useRef(timePerQuestion);
+  useEffect(() => {
+    timePerQuestionRef.current = timePerQuestion;
+  }, [timePerQuestion]);
+
   // 1. Khởi tạo Realtime Sync
   useEffect(() => {
+    if (!roomCode) return;
+
     syncRef.current = new LiveGameSync(roomCode, (event) => {
       if (event.type === 'STUDENT_JOIN') {
         const deviceId = event.payload.device_id || event.payload.avatar_url || event.payload.id;
@@ -379,7 +396,10 @@ export const LiveGameHostPage: React.FC = () => {
         });
       } else if (event.type === 'STUDENT_ANSWER') {
         const { participant_id, chosen_option, response_time_ms } = event.payload;
-        const currentQ = questions[currentQIndex];
+        const qIdx = currentQIndexRef.current;
+        const qs = questionsRef.current;
+        const currentQ = qs[qIdx];
+        const timeLimit = timePerQuestionRef.current;
         const correctIdx = currentQ?.correct_answer_json?.correct_index ?? 0;
         const isCorrect = chosen_option === correctIdx;
 
@@ -399,8 +419,12 @@ export const LiveGameHostPage: React.FC = () => {
               p.avatar_url === participant_id;
             const matchesName = p.student_name === event.payload.student_name;
             if (matchesId || matchesName) {
+              // Tránh ghi nhận lặp lại nếu học sinh gửi 2 lần cho cùng 1 câu
+              if (p.history && p.history[qIdx] !== undefined) {
+                return p;
+              }
               const newStreak = isCorrect ? p.streak + 1 : 0;
-              const earned = calculateSpeedPoints(isCorrect, response_time_ms, timePerQuestion, p.streak);
+              const earned = calculateSpeedPoints(isCorrect, response_time_ms, timeLimit, p.streak);
               return {
                 ...p,
                 score: p.score + earned,
@@ -409,7 +433,7 @@ export const LiveGameHostPage: React.FC = () => {
                 wrong_count: !isCorrect ? p.wrong_count + 1 : p.wrong_count,
                 history: {
                   ...p.history,
-                  [currentQIndex]: { isCorrect, chosenOption: chosen_option },
+                  [qIdx]: { isCorrect, chosenOption: chosen_option, pointsEarned: earned },
                 },
                 last_answer_correct: isCorrect,
                 last_points_earned: earned,
@@ -424,7 +448,7 @@ export const LiveGameHostPage: React.FC = () => {
     return () => {
       if (syncRef.current) syncRef.current.close();
     };
-  }, [roomCode, currentQIndex, timePerQuestion, questions]);
+  }, [roomCode]);
 
   // 1.1 Tự động Đăng ký và cập nhật trạng thái phòng đấu lên Supabase Cloud & LocalStorage
   useEffect(() => {
@@ -637,12 +661,49 @@ export const LiveGameHostPage: React.FC = () => {
     setStatus('result');
 
     const currentQ = questions[currentQIndex];
-    if (syncRef.current) {
-      syncRef.current.broadcast('ROUND_RESULT', {
-        correct_index: currentQ?.correct_answer_json?.correct_index ?? 0,
-        explanation: currentQ?.explanation,
+    const correctIdx = currentQ?.correct_answer_json?.correct_index ?? 0;
+
+    // Cập nhật tất cả học sinh chưa kịp bấm đáp án -> tính là sai
+    setParticipants((prev) => {
+      const updated = prev.map((p) => {
+        if (!p.history || p.history[currentQIndex] === undefined) {
+          return {
+            ...p,
+            wrong_count: (p.wrong_count || 0) + 1,
+            streak: 0,
+            last_answer_correct: false,
+            last_points_earned: 0,
+            history: {
+              ...p.history,
+              [currentQIndex]: { isCorrect: false, chosenOption: -1, pointsEarned: 0 },
+            },
+          };
+        }
+        return p;
       });
-    }
+
+      // Broadcast kết quả vòng đấu kèm dữ liệu điểm số đồng bộ tức thì cho tất cả học sinh
+      if (syncRef.current) {
+        syncRef.current.broadcast('ROUND_RESULT', {
+          question_index: currentQIndex,
+          correct_index: correctIdx,
+          explanation: currentQ?.explanation,
+          participant_results: updated.map((p) => ({
+            id: p.id,
+            device_id: (p as any).device_id,
+            student_name: p.student_name,
+            score: p.score,
+            streak: p.streak,
+            correct_count: p.correct_count,
+            wrong_count: Math.max(p.wrong_count || 0, (currentQIndex + 1) - p.correct_count),
+            last_points_earned: p.last_points_earned || 0,
+            last_answer_correct: p.last_answer_correct ?? false,
+          })),
+        });
+      }
+
+      return updated;
+    });
   };
 
   // Chuyển sang Câu Tiếp Theo hoặc Chuyển sang Bảng Tổng Hợp Cuối Cùng
@@ -653,9 +714,20 @@ export const LiveGameHostPage: React.FC = () => {
     } else {
       // Đã hết câu -> Chuyển sang Bảng Tổng Hợp Kết Quả & Bảng Xếp Hạng Cuối Cùng
       setStatus('final_summary');
+
+      // Chốt số câu sai chính xác tuyệt đối (Tổng số câu - số câu đúng)
+      const finalizedParticipants = participants
+        .map((p) => ({
+          ...p,
+          wrong_count: Math.max(p.wrong_count || 0, questions.length - p.correct_count),
+        }))
+        .sort((a, b) => b.score - a.score);
+
+      setParticipants(finalizedParticipants);
+
       if (syncRef.current) {
         syncRef.current.broadcast('SHOW_FINAL_SUMMARY', {
-          top_participants: participants.sort((a, b) => b.score - a.score),
+          top_participants: finalizedParticipants,
         });
       }
     }
@@ -680,14 +752,17 @@ export const LiveGameHostPage: React.FC = () => {
           else wrongCnt++;
         }
       });
-      const total = correctCnt + wrongCnt;
-      const accuracy = total > 0 ? Math.round((correctCnt / total) * 100) : 100;
+      const totalParticipants = participants.length;
+      // Tổng số người tham gia (dựa trên sĩ số thực tế trong phòng)
+      const effectiveTotal = totalParticipants > 0 ? totalParticipants : (correctCnt + wrongCnt);
+      // Tỷ lệ làm đúng % của cả lớp đối với câu hỏi này
+      const accuracy = effectiveTotal > 0 ? Math.round((correctCnt / effectiveTotal) * 100) : 0;
       return {
         question: q,
         questionIndex: qIdx,
         correctCount: correctCnt,
-        wrongCount: wrongCnt,
-        total,
+        wrongCount: Math.max(wrongCnt, effectiveTotal - correctCnt),
+        total: effectiveTotal,
         accuracy,
       };
     });
@@ -1429,7 +1504,7 @@ export const LiveGameHostPage: React.FC = () => {
                         </td>
                         <td className="py-3.5 px-3 text-center">
                           <span className="font-bold text-red-400 bg-red-950/40 px-2.5 py-1 rounded-full text-xs">
-                            ✕ {p.wrong_count} câu
+                            ✕ {Math.max(p.wrong_count || 0, questions.length - p.correct_count)} câu
                           </span>
                         </td>
                         <td className="py-3.5 px-3 text-center font-bold text-slate-300">

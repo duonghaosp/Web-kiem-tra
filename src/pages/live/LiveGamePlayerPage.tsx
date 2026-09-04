@@ -11,7 +11,7 @@ import {
   Zap,
   Award,
 } from 'lucide-react';
-import { KAHOOT_COLORS, LiveGameSync, checkValidActiveRoom, getOrCreateDeviceId } from '../../lib/liveGameEngine';
+import { KAHOOT_COLORS, LiveGameSync, checkValidActiveRoom, getOrCreateDeviceId, calculateSpeedPoints } from '../../lib/liveGameEngine';
 import { triggerCelebration } from '../../lib/gamification';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
@@ -34,9 +34,12 @@ export const LiveGamePlayerPage: React.FC = () => {
   const [wrongCount, setWrongCount] = useState<number>(0);
   const [totalScore, setTotalScore] = useState<number>(0);
   const [streak, setStreak] = useState<number>(0);
+  const [earnedPoints, setEarnedPoints] = useState<number>(0);
   const [finalRank, setFinalRank] = useState<number | null>(null);
 
   const startTimeRef = useRef<number>(Date.now());
+  const responseTimeRef = useRef<number>(0);
+  const timeLimitRef = useRef<number>(20);
   const syncRef = useRef<LiveGameSync | null>(null);
 
   useEffect(() => {
@@ -61,25 +64,89 @@ export const LiveGamePlayerPage: React.FC = () => {
         if (event.type === 'QUESTION_START') {
           setCurrentQIndex(event.payload.question_index);
           setTotalQuestions(event.payload.total_questions);
+          if (event.payload.time_limit) {
+            timeLimitRef.current = event.payload.time_limit;
+          }
           setChosenOption(null);
           setIsCorrect(null);
+          setEarnedPoints(0);
           setGameState('answering');
           startTimeRef.current = Date.now();
         } else if (event.type === 'ROUND_RESULT') {
           const correctIdx = event.payload.correct_index;
           setCorrectIndex(correctIdx);
           setGameState('result');
+
+          const deviceId = getOrCreateDeviceId();
+          let synced = false;
+
+          // 1. Đồng bộ điểm số và kết quả chính xác 100% từ Host
+          if (event.payload?.participant_results && Array.isArray(event.payload.participant_results)) {
+            const myData = event.payload.participant_results.find(
+              (p: any) =>
+                p.device_id === deviceId ||
+                p.id === deviceId ||
+                p.student_name === studentName
+            );
+            if (myData) {
+              setTotalScore(myData.score);
+              setCorrectCount(myData.correct_count);
+              setWrongCount(myData.wrong_count);
+              setStreak(myData.streak);
+              setIsCorrect(myData.last_answer_correct);
+              setEarnedPoints(myData.last_points_earned || 0);
+              synced = true;
+            }
+          }
+
+          // 2. Dự phòng (fallback) nếu mạng trễ hoặc Host không kèm participant_results
+          if (!synced) {
+            setChosenOption((prevChosen) => {
+              const correct = prevChosen !== null && prevChosen === correctIdx;
+              setIsCorrect(correct);
+              if (correct) {
+                setStreak((prevStreak) => {
+                  const points = calculateSpeedPoints(
+                    true,
+                    responseTimeRef.current,
+                    timeLimitRef.current,
+                    prevStreak
+                  );
+                  setEarnedPoints(points);
+                  setTotalScore((prev) => prev + points);
+                  return prevStreak + 1;
+                });
+                setCorrectCount((prev) => prev + 1);
+              } else {
+                setWrongCount((prev) => prev + 1);
+                setStreak(0);
+                setEarnedPoints(0);
+              }
+              return prevChosen;
+            });
+          }
         } else if (event.type === 'SHOW_FINAL_SUMMARY' || event.type === 'GAME_FINISHED') {
           setGameState('finished');
           triggerCelebration();
 
-          // Tìm thứ hạng của học sinh
-          if (event.payload?.top_participants) {
+          const deviceId = getOrCreateDeviceId();
+          // Tìm thứ hạng và đồng bộ điểm tổng kết của học sinh
+          if (event.payload?.top_participants && Array.isArray(event.payload.top_participants)) {
             const rankIdx = event.payload.top_participants.findIndex(
-              (p: any) => p.student_name === studentName
+              (p: any) =>
+                p.device_id === deviceId ||
+                p.id === deviceId ||
+                p.student_name === studentName
             );
             if (rankIdx !== -1) {
               setFinalRank(rankIdx + 1);
+              const myPart = event.payload.top_participants[rankIdx];
+              if (myPart) {
+                setTotalScore(myPart.score);
+                setCorrectCount(myPart.correct_count);
+                setWrongCount(myPart.wrong_count ?? Math.max(0, totalQuestions - myPart.correct_count));
+                setStreak(myPart.streak || 0);
+              }
             }
           }
         }
@@ -154,6 +221,7 @@ export const LiveGamePlayerPage: React.FC = () => {
     if (gameState !== 'answering' || chosenOption !== null) return;
 
     const responseTimeMs = Date.now() - startTimeRef.current;
+    responseTimeRef.current = responseTimeMs;
     setChosenOption(idx);
     setGameState('answered');
 
@@ -167,26 +235,6 @@ export const LiveGamePlayerPage: React.FC = () => {
       });
     }
   };
-
-  // Cập nhật thống kê đúng/sai khi chuyển sang màn hình result
-  useEffect(() => {
-    if (gameState === 'result' && chosenOption !== null) {
-      const correct = chosenOption === correctIndex;
-      setIsCorrect(correct);
-      if (correct) {
-        setCorrectCount((prev) => prev + 1);
-        setStreak((prev) => prev + 1);
-        setTotalScore((prev) => prev + 850);
-      } else {
-        setWrongCount((prev) => prev + 1);
-        setStreak(0);
-      }
-    } else if (gameState === 'result' && chosenOption === null) {
-      setIsCorrect(false);
-      setWrongCount((prev) => prev + 1);
-      setStreak(0);
-    }
-  }, [gameState, correctIndex]);
 
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col justify-between p-4 select-none touch-manipulation">
@@ -266,6 +314,11 @@ export const LiveGamePlayerPage: React.FC = () => {
                 ✓
               </div>
               <h3 className="text-xl font-black text-emerald-300">CHÍNH XÁC!</h3>
+              {earnedPoints > 0 && (
+                <div className="font-mono font-black text-yellow-400 text-base bg-yellow-950/60 px-3.5 py-1 rounded-xl border border-yellow-800 inline-block shadow-sm">
+                  +{earnedPoints} điểm
+                </div>
+              )}
               <p className="text-xs text-emerald-100">
                 Tuyệt vời, em đã chọn đúng đáp án <strong>{KAHOOT_COLORS[correctIndex]?.name}</strong>.
               </p>
@@ -275,7 +328,9 @@ export const LiveGamePlayerPage: React.FC = () => {
               <div className="w-16 h-16 rounded-full bg-red-600 text-white flex items-center justify-center font-black text-3xl mx-auto shadow-lg">
                 ✕
               </div>
-              <h3 className="text-xl font-black text-red-300">CHƯA CHÍNH XÁC!</h3>
+              <h3 className="text-xl font-black text-red-300">
+                {chosenOption === null ? 'HẾT GIỜ / CHƯA CHỌN!' : 'CHƯA CHÍNH XÁC!'}
+              </h3>
               <p className="text-xs text-red-100">
                 Đáp án đúng của câu này là: <strong>{KAHOOT_COLORS[correctIndex]?.name}</strong>.
               </p>
