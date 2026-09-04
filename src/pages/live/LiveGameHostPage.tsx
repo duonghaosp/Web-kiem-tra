@@ -41,6 +41,7 @@ import {
   Smartphone,
   Trash2,
   UserX,
+  Eye,
 } from 'lucide-react';
 import { Question } from '../../types/database';
 import { LiveGameParticipant, LiveGameRoom, LiveGameStatus } from '../../types/liveGame';
@@ -129,6 +130,12 @@ const DEFAULT_ARENA_QUESTIONS: Question[] = [
   },
 ];
 
+// Hàm kiểm tra câu hỏi có phải là câu hỏi mẫu mặc định của hệ thống không
+export const isDefaultArenaQuestion = (q: Question | undefined | null): boolean => {
+  if (!q) return false;
+  return Boolean(q.id?.startsWith('lg_q') || (q as any).is_sample);
+};
+
 interface ParticipantWithStats extends LiveGameParticipant {
   correct_count: number;
   wrong_count: number;
@@ -153,6 +160,8 @@ export const LiveGameHostPage: React.FC = () => {
 
   // --- QUẢN LÝ BỘ CÂU HỎI ĐẤU TRƯỜNG DO GIÁO VIÊN CHỌN ---
   const [isQuestionPickerOpen, setIsQuestionPickerOpen] = useState<boolean>(false);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState<boolean>(false);
+  const [isCustomSet, setIsCustomSet] = useState<boolean>(false); // Đánh dấu giáo viên đã tự chọn đề
   const [questions, setQuestions] = useState<Question[]>(DEFAULT_ARENA_QUESTIONS);
   const [timePerQuestion, setTimePerQuestion] = useState<number>(30); // 10s, 15s, 20s, 30s
 
@@ -162,8 +171,8 @@ export const LiveGameHostPage: React.FC = () => {
   const allTemplates = useMemo(() => getStoredExamTemplates(), [isQuestionPickerOpen]);
 
   // Bộ lọc trong Modal chọn câu hỏi
-  const [pickerGrade, setPickerGrade] = useState<number>(6);
-  const [pickerTab, setPickerTab] = useState<'random_range' | 'manual_bank' | 'template'>('random_range');
+  const [pickerGrade, setPickerGrade] = useState<number>(7);
+  const [pickerTab, setPickerTab] = useState<'random_range' | 'manual_bank' | 'template'>('manual_bank');
 
   // Trạng thái bốc ngẫu nhiên theo bài
   const [startLesson, setStartLesson] = useState<number>(1);
@@ -172,7 +181,7 @@ export const LiveGameHostPage: React.FC = () => {
 
   // Trạng thái tự chọn từng câu
   const [expandedLessonId, setExpandedLessonId] = useState<string | null>(null);
-  const [tempSelectedQuestions, setTempSelectedQuestions] = useState<Question[]>(questions);
+  const [tempSelectedQuestions, setTempSelectedQuestions] = useState<Question[]>([]);
 
   // Hàm chuẩn hóa: Chỉ chấp nhận câu hỏi trắc nghiệm có 1 đáp án đúng duy nhất
   const isSingleChoiceQuestion = (q: Question): boolean => {
@@ -183,14 +192,14 @@ export const LiveGameHostPage: React.FC = () => {
     );
   };
 
-  // Bài học & câu hỏi của khối đang chọn (CHỈ LẤY TRẮC NGHIỆM 1 ĐÁP ÁN ĐÚNG)
+  // Bài học & câu hỏi của khối đang chọn (CHỈ LẤY TRẮC NGHIỆM 1 ĐÁP ÁN ĐÚNG VÀ KHÔNG LẤY CÂU MẪU)
   const gradeLessons = useMemo(() => {
     return allLessons.filter((l) => l.grade === pickerGrade);
   }, [allLessons, pickerGrade]);
 
   const gradeQuestions = useMemo(() => {
     return allQuestions.filter(
-      (q) => q.grade === pickerGrade && isSingleChoiceQuestion(q)
+      (q) => q.grade === pickerGrade && isSingleChoiceQuestion(q) && !isDefaultArenaQuestion(q)
     );
   }, [allQuestions, pickerGrade]);
 
@@ -199,7 +208,42 @@ export const LiveGameHostPage: React.FC = () => {
     setEndLesson(Math.min(5, gradeLessons.length || 5));
   }, [pickerGrade, gradeLessons]);
 
-  // Bốc ngẫu nhiên câu hỏi từ Bài X đến Bài Y (CHỈ BỐC CÂU TRẮC NGHIỆM 1 ĐÁP ÁN)
+  // Mở modal chọn câu hỏi: Nếu đang dùng câu hỏi mẫu mặc định, dọn sạch tempSelectedQuestions để cô chọn mới hoàn toàn
+  const handleOpenQuestionPicker = () => {
+    if (!isCustomSet || questions.some(isDefaultArenaQuestion)) {
+      setTempSelectedQuestions([]);
+    } else {
+      setTempSelectedQuestions(questions.filter((q) => !isDefaultArenaQuestion(q)));
+    }
+    setIsQuestionPickerOpen(true);
+  };
+
+  // Chọn / Bỏ chọn từng câu trong kho đề (Tự động xóa sạch câu hỏi mẫu nếu còn)
+  const handleToggleQuestionSelection = (q: Question) => {
+    const isChecked = tempSelectedQuestions.some((item) => item.id === q.id);
+    if (isChecked) {
+      setTempSelectedQuestions(tempSelectedQuestions.filter((item) => item.id !== q.id));
+    } else {
+      const cleanList = tempSelectedQuestions.filter((item) => !isDefaultArenaQuestion(item));
+      setTempSelectedQuestions([...cleanList, q]);
+    }
+  };
+
+  // Chọn / Bỏ chọn toàn bộ câu hỏi trắc nghiệm của 1 bài học
+  const handleToggleSelectAllLesson = (qList: Question[]) => {
+    const cleanList = tempSelectedQuestions.filter((item) => !isDefaultArenaQuestion(item));
+    const allIds = new Set(qList.map((q) => q.id));
+    const isAllSelected = qList.length > 0 && qList.every((q) => cleanList.some((item) => item.id === q.id));
+
+    if (isAllSelected) {
+      setTempSelectedQuestions(cleanList.filter((item) => !allIds.has(item.id)));
+    } else {
+      const remainingOther = cleanList.filter((item) => !allIds.has(item.id));
+      setTempSelectedQuestions([...remainingOther, ...qList]);
+    }
+  };
+
+  // Bốc ngẫu nhiên câu hỏi từ Bài X đến Bài Y (CHỈ BỐC CÂU TRẮC NGHIỆM 1 ĐÁP ÁN, TUYỆT ĐỐI KHÔNG BỐC CÂU MẪU)
   const handleRandomPickForArena = () => {
     const validLessons = gradeLessons.filter(
       (l) => l.lesson_number >= startLesson && l.lesson_number <= endLesson
@@ -209,6 +253,7 @@ export const LiveGameHostPage: React.FC = () => {
 
     const pool = gradeQuestions.filter((q) => {
       if (!isSingleChoiceQuestion(q)) return false;
+      if (isDefaultArenaQuestion(q)) return false;
       if (q.lesson_id && validLessonIds.includes(q.lesson_id)) return true;
       if (q.category && validLessonTitles.includes(q.category)) return true;
       if (!q.lesson_id && startLesson === 1) return true;
@@ -227,16 +272,24 @@ export const LiveGameHostPage: React.FC = () => {
     alert(`🎲 Đã bốc thành công ${picked.length} câu hỏi trắc nghiệm 1 đáp án từ Bài ${startLesson} đến Bài ${endLesson}!`);
   };
 
-  // Áp dụng bộ câu hỏi đã chọn cho Đấu trường (BẮT BUỘC TRẮC NGHIỆM 1 ĐÁP ÁN)
+  // Áp dụng bộ câu hỏi đã chọn cho Đấu trường (BẮT BUỘC TRẮC NGHIỆM 1 ĐÁP ÁN, LOẠI BỎ TRIỆT ĐỂ CÂU MẪU)
   const handleConfirmSelectedQuestions = () => {
-    const validOnly = tempSelectedQuestions.filter(isSingleChoiceQuestion);
+    let validOnly = tempSelectedQuestions.filter(isSingleChoiceQuestion);
+
+    // Nếu giáo viên đã chọn câu hỏi thật từ kho bài học, LOẠI BỎ HOÀN TOÀN mọi câu hỏi mẫu mặc định
+    const realQuestions = validOnly.filter((q) => !isDefaultArenaQuestion(q));
+    if (realQuestions.length > 0) {
+      validOnly = realQuestions;
+    }
+
     if (validOnly.length === 0) {
       alert('Cô hãy chọn ít nhất 1 câu hỏi trắc nghiệm có 1 đáp án trả lời cho Đấu trường nhé!');
       return;
     }
     setQuestions(validOnly);
+    setIsCustomSet(true);
     setIsQuestionPickerOpen(false);
-    alert(`⚡ Đã nạp thành công bộ ${validOnly.length} câu hỏi trắc nghiệm 1 đáp án vào Đấu Trường Trực Tiếp!`);
+    alert(`⚡ Đã nạp thành công đúng bộ ${validOnly.length} câu hỏi trắc nghiệm 1 đáp án vào Đấu Trường Trực Tiếp!`);
   };
 
   // --- TRẠNG THÁI GAME REALTIME ---
@@ -346,21 +399,43 @@ export const LiveGameHostPage: React.FC = () => {
       time_per_question: timePerQuestion,
       current_question_index: currentQIndex,
     } as any);
-  }, [roomCode, status, pickerGrade, questions.length, timePerQuestion, currentQIndex, profile]);
+  }, [roomCode, status, pickerGrade, questions, timePerQuestion, currentQIndex, profile]);
+
+  // Luôn lưu trạng thái mới nhất vào Ref để heartbeat không bị dính closure state cũ
+  const latestRoomStateRef = useRef({
+    questions,
+    timePerQuestion,
+    currentQIndex,
+    status,
+    pickerGrade,
+    profile,
+  });
+
+  useEffect(() => {
+    latestRoomStateRef.current = {
+      questions,
+      timePerQuestion,
+      currentQIndex,
+      status,
+      pickerGrade,
+      profile,
+    };
+  }, [questions, timePerQuestion, currentQIndex, status, pickerGrade, profile]);
 
   // Heartbeat định kỳ giữ phòng luôn mở và CHỈ hủy phòng khi cô Hảo rời trang (Unmount)
   useEffect(() => {
     const timer = setInterval(() => {
+      const cur = latestRoomStateRef.current;
       registerActiveRoom({
         pin: roomCode,
-        title: `Đấu Trường Đố Vui Địa Lí THCS - Khối ${pickerGrade}`,
-        teacher_name: profile?.full_name || 'Cô Dương Thu Hảo',
-        grade: pickerGrade,
-        status: status,
-        total_questions: questions.length,
-        questions: questions,
-        time_per_question: timePerQuestion,
-        current_question_index: currentQIndex,
+        title: `Đấu Trường Đố Vui Địa Lí THCS - Khối ${cur.pickerGrade}`,
+        teacher_name: cur.profile?.full_name || 'Cô Dương Thu Hảo',
+        grade: cur.pickerGrade,
+        status: cur.status,
+        total_questions: cur.questions.length,
+        questions: cur.questions,
+        time_per_question: cur.timePerQuestion,
+        current_question_index: cur.currentQIndex,
       } as any);
     }, 6000);
 
@@ -569,23 +644,43 @@ export const LiveGameHostPage: React.FC = () => {
           </div>
 
           {/* Thanh cài đặt & Nút Chọn Bộ Câu Hỏi */}
-          <div className="flex flex-wrap items-center justify-center gap-3 bg-slate-900/90 p-3.5 rounded-2xl border border-slate-800 shadow-lg">
-            <div className="text-xs font-bold text-slate-300 flex items-center gap-1.5">
+          <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3 bg-slate-900/90 p-3.5 rounded-2xl border border-slate-800 shadow-lg">
+            <div className="text-xs font-bold text-slate-300 flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-ocean-400" />
-              <span>Bộ câu hỏi hiện tại: <strong className="text-yellow-400">{questions.length} câu</strong> ({timePerQuestion}s/câu)</span>
+              <span>
+                Bộ câu hỏi hiện tại: <strong className="text-yellow-400">{questions.length} câu</strong> ({timePerQuestion}s/câu)
+              </span>
+              {questions.some(isDefaultArenaQuestion) ? (
+                <span className="px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-300 text-[10px] font-bold border border-amber-500/40 animate-pulse">
+                  ⚠️ Câu hỏi mẫu khởi động
+                </span>
+              ) : (
+                <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/40">
+                  ✓ Đã nạp từ kho bài ({questions.length} câu)
+                </span>
+              )}
             </div>
 
-            <button
-              type="button"
-              onClick={() => {
-                setTempSelectedQuestions(questions);
-                setIsQuestionPickerOpen(true);
-              }}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-ocean-600 hover:bg-ocean-500 active:scale-95 text-white text-xs font-black transition shadow-xs"
-            >
-              <Settings className="w-3.5 h-3.5" />
-              Chọn / Đổi Bộ Câu Hỏi Đấu Trường
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setIsPreviewModalOpen(true)}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-200 text-xs font-bold transition border border-slate-700 cursor-pointer"
+                title="Xem trước danh sách câu hỏi đang nạp trong Đấu trường"
+              >
+                <Eye className="w-3.5 h-3.5 text-ocean-400" />
+                <span>Xem trước ({questions.length} câu)</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleOpenQuestionPicker}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-xl bg-ocean-600 hover:bg-ocean-500 active:scale-95 text-white text-xs font-black transition shadow-xs cursor-pointer"
+              >
+                <Settings className="w-3.5 h-3.5" />
+                <span>Chọn / Đổi Bộ Câu Hỏi Đấu Trường</span>
+              </button>
+            </div>
           </div>
 
           {/* KHỐI GIA NHẬP PHÒNG ĐẤU: MÃ QR CODE & MÃ PIN CHIẾU MÁY CHIẾU */}
@@ -778,6 +873,16 @@ export const LiveGameHostPage: React.FC = () => {
             <button
               type="button"
               onClick={() => {
+                if (questions.some(isDefaultArenaQuestion)) {
+                  if (
+                    !confirm(
+                      'Bộ câu hỏi hiện tại đang là câu hỏi mẫu mặc định của hệ thống. Cô có muốn tiếp tục bắt đầu không, hay muốn mở kho để chọn câu hỏi bài học của mình trước?'
+                    )
+                  ) {
+                    handleOpenQuestionPicker();
+                    return;
+                  }
+                }
                 if (participants.length === 0) {
                   if (!confirm('Hiện chưa có học sinh nào trong phòng chờ. Cô có muốn bắt đầu để tự trải nghiệm thử không?')) {
                     return;
@@ -1522,54 +1627,81 @@ export const LiveGameHostPage: React.FC = () => {
                     (q) => q.lesson_id === les.id || q.category === les.title
                   );
                   const isExp = expandedLessonId === les.id;
+                  const cleanCurrent = tempSelectedQuestions.filter((item) => !isDefaultArenaQuestion(item));
+                  const isCheckedAll = qList.length > 0 && qList.every((q) => cleanCurrent.some((item) => item.id === q.id));
+                  const selectedCountInLesson = qList.filter((q) => cleanCurrent.some((item) => item.id === q.id)).length;
 
                   return (
                     <div key={les.id} className="border border-slate-200 rounded-xl bg-white overflow-hidden">
                       <div
                         onClick={() => setExpandedLessonId(isExp ? null : les.id)}
-                        className="p-2.5 bg-slate-50 hover:bg-slate-100 cursor-pointer flex items-center justify-between text-xs font-bold"
+                        className="p-2.5 bg-slate-50 hover:bg-slate-100 cursor-pointer flex items-center justify-between text-xs font-bold gap-2"
                       >
-                        <div className="flex items-center gap-2">
-                          <span className="w-5 h-5 rounded bg-ocean-100 text-ocean-800 text-[10px] font-black flex items-center justify-center">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-5 h-5 rounded bg-ocean-100 text-ocean-800 text-[10px] font-black flex items-center justify-center shrink-0">
                             B{les.lesson_number}
                           </span>
-                          <span>{les.title}</span>
-                          <span className="text-[10px] text-slate-500 font-normal">({qList.length} câu)</span>
+                          <span className="truncate">{les.title}</span>
+                          <span className="text-[10px] text-slate-500 font-normal shrink-0">({qList.length} câu)</span>
+                          {selectedCountInLesson > 0 && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-300 shrink-0">
+                              Đã chọn {selectedCountInLesson}/{qList.length}
+                            </span>
+                          )}
                         </div>
-                        {isExp ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {qList.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleToggleSelectAllLesson(qList);
+                              }}
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border transition ${
+                                isCheckedAll
+                                  ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
+                                  : 'bg-ocean-50 text-ocean-700 border-ocean-200 hover:bg-ocean-100'
+                              }`}
+                            >
+                              {isCheckedAll ? 'Bỏ chọn bài' : `Chọn cả bài (${qList.length} câu)`}
+                            </button>
+                          )}
+                          {isExp ? <ChevronUp className="w-4 h-4 text-slate-400" /> : <ChevronDown className="w-4 h-4 text-slate-400" />}
+                        </div>
                       </div>
 
                       {isExp && (
                         <div className="p-2.5 space-y-1.5 border-t border-slate-100">
-                          {qList.map((q) => {
-                            const isChecked = tempSelectedQuestions.some((item) => item.id === q.id);
-                            return (
-                              <div
-                                key={q.id}
-                                onClick={() => {
-                                  if (isChecked) {
-                                    setTempSelectedQuestions(tempSelectedQuestions.filter((item) => item.id !== q.id));
-                                  } else {
-                                    setTempSelectedQuestions([...tempSelectedQuestions, q]);
-                                  }
-                                }}
-                                className={`p-2 rounded-lg border text-xs cursor-pointer flex items-start gap-2 ${
-                                  isChecked ? 'bg-ocean-50 border-ocean-400' : 'hover:bg-slate-50 border-slate-200'
-                                }`}
-                              >
-                                <div className="pt-0.5">
-                                  {isChecked ? (
-                                    <CheckSquare className="w-4 h-4 text-ocean-600" />
-                                  ) : (
-                                    <Square className="w-4 h-4 text-slate-300" />
-                                  )}
+                          {qList.length === 0 ? (
+                            <div className="text-[11px] text-slate-400 italic p-2">
+                              Bài học này chưa có câu hỏi trắc nghiệm 1 đáp án trong kho đề.
+                            </div>
+                          ) : (
+                            qList.map((q) => {
+                              const isChecked = tempSelectedQuestions.some((item) => item.id === q.id);
+                              return (
+                                <div
+                                  key={q.id}
+                                  onClick={() => handleToggleQuestionSelection(q)}
+                                  className={`p-2 rounded-lg border text-xs cursor-pointer flex items-start gap-2 ${
+                                    isChecked ? 'bg-ocean-50 border-ocean-400' : 'hover:bg-slate-50 border-slate-200'
+                                  }`}
+                                >
+                                  <div className="pt-0.5">
+                                    {isChecked ? (
+                                      <CheckSquare className="w-4 h-4 text-ocean-600" />
+                                    ) : (
+                                      <Square className="w-4 h-4 text-slate-300" />
+                                    )}
+                                  </div>
+                                  <div className="text-slate-800 font-medium line-clamp-1">
+                                    {q.content_json?.question || q.title}
+                                  </div>
                                 </div>
-                                <div className="text-slate-800 font-medium line-clamp-1">
-                                  {q.content_json?.question || q.title}
-                                </div>
-                              </div>
-                            );
-                          })}
+                              );
+                            })
+                          )}
                         </div>
                       )}
                     </div>
@@ -1599,7 +1731,9 @@ export const LiveGameHostPage: React.FC = () => {
                     <button
                       type="button"
                       onClick={() => {
-                        const objOnly = tpl.questions.filter(isSingleChoiceQuestion);
+                        const objOnly = tpl.questions.filter(
+                          (q) => isSingleChoiceQuestion(q) && !isDefaultArenaQuestion(q)
+                        );
                         if (objOnly.length === 0) {
                           alert(`Đề thi "${tpl.title}" không có câu trắc nghiệm 1 đáp án nào!`);
                           return;
@@ -1618,45 +1752,92 @@ export const LiveGameHostPage: React.FC = () => {
 
             {/* Danh sách câu hỏi đã chọn cho Đấu trường */}
             <div className="space-y-2 border-t border-slate-100 pt-3">
-              <div className="flex items-center justify-between text-xs font-bold text-slate-700">
-                <span>Danh sách câu hỏi Đấu trường ({tempSelectedQuestions.length} câu trắc nghiệm 1 đáp án):</span>
-                <button
-                  type="button"
-                  onClick={() => setTempSelectedQuestions([])}
-                  className="text-red-600 hover:underline text-[11px]"
-                >
-                  Xóa hết
-                </button>
-              </div>
+              <div className="flex flex-wrap items-center justify-between text-xs font-bold text-slate-700 gap-2">
+                <div className="flex items-center gap-2">
+                  <span>Danh sách câu hỏi Đấu trường:</span>
+                  <span className="px-2.5 py-0.5 rounded-full bg-ocean-100 text-ocean-800 text-xs font-black">
+                    {tempSelectedQuestions.length} câu trắc nghiệm 1 đáp án
+                  </span>
+                  {tempSelectedQuestions.some(isDefaultArenaQuestion) && (
+                    <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold border border-amber-300">
+                      Có chứa câu mẫu
+                    </span>
+                  )}
+                </div>
 
-              <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
-                {tempSelectedQuestions.map((q, idx) => (
-                  <div
-                    key={q.id}
-                    className="p-2 rounded-xl bg-slate-50 border border-slate-200 text-xs flex items-center justify-between gap-2"
-                  >
-                    <div className="flex items-center gap-2 truncate">
-                      <span className="w-5 h-5 rounded-full bg-ocean-600 text-white font-bold text-[10px] flex items-center justify-center shrink-0">
-                        {idx + 1}
-                      </span>
-                      <span className="font-medium text-slate-800 truncate">
-                        {q.content_json?.question || q.title}
-                      </span>
-                    </div>
-
+                <div className="flex items-center gap-3">
+                  {tempSelectedQuestions.some(isDefaultArenaQuestion) && (
                     <button
                       type="button"
                       onClick={() =>
                         setTempSelectedQuestions(
-                          tempSelectedQuestions.filter((item) => item.id !== q.id)
+                          tempSelectedQuestions.filter((q) => !isDefaultArenaQuestion(q))
                         )
                       }
-                      className="text-slate-400 hover:text-red-600 p-1"
+                      className="text-amber-700 hover:underline text-[11px] font-bold"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      Loại bỏ câu mẫu
                     </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setTempSelectedQuestions([])}
+                    className="text-red-600 hover:underline text-[11px] font-bold"
+                  >
+                    Xóa hết (Chọn lại)
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+                {tempSelectedQuestions.length === 0 ? (
+                  <div className="p-4 rounded-xl border border-dashed border-slate-300 text-center text-xs text-slate-500">
+                    Chưa có câu hỏi nào được chọn. Cô hãy chọn ở các tab phía trên (Bốc theo bài hoặc Tự chọn trong kho đề) nhé!
                   </div>
-                ))}
+                ) : (
+                  tempSelectedQuestions.map((q, idx) => {
+                    const isSample = isDefaultArenaQuestion(q);
+                    return (
+                      <div
+                        key={q.id || idx}
+                        className={`p-2 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+                          isSample ? 'bg-amber-50/60 border-amber-200' : 'bg-slate-50 border-slate-200'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 truncate min-w-0">
+                          <span
+                            className={`w-5 h-5 rounded-full text-white font-bold text-[10px] flex items-center justify-center shrink-0 ${
+                              isSample ? 'bg-amber-600' : 'bg-ocean-600'
+                            }`}
+                          >
+                            {idx + 1}
+                          </span>
+                          {isSample && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-200 text-amber-900 shrink-0">
+                              Mẫu
+                            </span>
+                          )}
+                          <span className="font-medium text-slate-800 truncate">
+                            {q.content_json?.question || q.title}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setTempSelectedQuestions(
+                              tempSelectedQuestions.filter((item) => item.id !== q.id)
+                            )
+                          }
+                          className="text-slate-400 hover:text-red-600 p-1 shrink-0"
+                          title="Bỏ câu này"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
               </div>
             </div>
 
@@ -1675,6 +1856,109 @@ export const LiveGameHostPage: React.FC = () => {
                 className="px-6 py-2.5 bg-gradient-to-r from-ocean-600 to-teal-600 hover:from-ocean-700 hover:to-teal-700 active:scale-95 text-white text-xs font-black rounded-xl shadow-md transition cursor-pointer"
               >
                 Xác Nhận Áp Dụng Cho Đấu Trường ({tempSelectedQuestions.length} Câu Trắc Nghiệm 1 Đáp Án)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XEM TRƯỚC BỘ CÂU HỎI HIỆN TẠI TRONG ĐẤU TRƯỜNG */}
+      {isPreviewModalOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in">
+          <div className="bg-white text-slate-900 rounded-3xl max-w-2xl w-full p-6 space-y-4 shadow-2xl max-h-[85vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <BookOpen className="w-5 h-5 text-ocean-600" />
+                <h3 className="text-base font-black text-slate-900">
+                  Xem Trước Bộ Câu Hỏi Đấu Trường ({questions.length} câu)
+                </h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsPreviewModalOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+              {questions.map((q, idx) => {
+                const correctIdx = q.correct_answer_json?.correct_index ?? 0;
+                const isSample = isDefaultArenaQuestion(q);
+                return (
+                  <div
+                    key={q.id || idx}
+                    className={`p-3.5 rounded-2xl border text-xs space-y-2 ${
+                      isSample ? 'bg-amber-50/50 border-amber-200' : 'bg-slate-50 border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-start gap-2 font-bold text-slate-900 text-sm">
+                      <span
+                        className={`w-6 h-6 rounded-full text-white flex items-center justify-center shrink-0 text-xs ${
+                          isSample ? 'bg-amber-600' : 'bg-ocean-600'
+                        }`}
+                      >
+                        {idx + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          {isSample && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-200 text-amber-900">
+                              Câu hỏi mẫu
+                            </span>
+                          )}
+                          <span>{q.content_json?.question || q.title}</span>
+                        </div>
+                        {q.category && (
+                          <div className="text-[11px] font-normal text-slate-500 mt-0.5">
+                            {q.category}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pl-8">
+                      {(q.content_json?.options || []).map((opt: string, optIdx: number) => (
+                        <div
+                          key={optIdx}
+                          className={`p-2 rounded-xl border text-xs flex items-center gap-1.5 ${
+                            optIdx === correctIdx
+                              ? 'bg-emerald-50 border-emerald-300 text-emerald-900 font-bold'
+                              : 'bg-white border-slate-200 text-slate-700'
+                          }`}
+                        >
+                          <span className="font-black text-[11px]">
+                            {String.fromCharCode(65 + optIdx)}.
+                          </span>
+                          <span>{opt}</span>
+                          {optIdx === correctIdx && (
+                            <Check className="w-3.5 h-3.5 text-emerald-600 ml-auto shrink-0" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsPreviewModalOpen(false);
+                  handleOpenQuestionPicker();
+                }}
+                className="px-4 py-2 bg-ocean-50 text-ocean-700 hover:bg-ocean-100 font-bold text-xs rounded-xl border border-ocean-200 cursor-pointer"
+              >
+                Đổi Bộ Câu Hỏi Khác
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsPreviewModalOpen(false)}
+                className="px-5 py-2 bg-ocean-600 hover:bg-ocean-700 text-white font-bold text-xs rounded-xl shadow-xs cursor-pointer"
+              >
+                Đóng
               </button>
             </div>
           </div>
