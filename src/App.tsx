@@ -27,9 +27,47 @@ import { LiveGameJoinPage } from './pages/live/LiveGameJoinPage';
 import { LiveGamePlayerPage } from './pages/live/LiveGamePlayerPage';
 import { TeacherSubmissionLiveAlert } from './components/teacher/TeacherSubmissionLiveAlert';
 
-// Bộ bảo vệ phân quyền: Khóa tuyệt đối các trang quản trị/giáo viên đối với học sinh
+// 1. Bảo vệ trang bắt buộc đăng nhập (cả học sinh và giáo viên)
+const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { user, profile, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#DFE7E5]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-[#C9942C] border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-bold text-[#2D4441]">Đang tải hệ thống...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user && !profile) {
+    return <Navigate to="/login" replace />;
+  }
+
+  return <>{children}</>;
+};
+
+// 2. Bảo vệ phân quyền Giáo Viên: Chưa đăng nhập -> về /login, Học sinh -> về /student-dashboard
 const TeacherRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { role } = useAuth();
+  const { user, profile, role, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#DFE7E5]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-[#C9942C] border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-bold text-[#2D4441]">Đang tải hệ thống...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!user && !profile) {
+    return <Navigate to="/login" replace />;
+  }
+
   const isTeacher = role === 'teacher' || role === 'admin';
 
   if (!isTeacher) {
@@ -38,6 +76,40 @@ const TeacherRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   }
 
   return <>{children}</>;
+};
+
+// 3. Định tuyến Trang Gốc (/) - Đáp ứng chính xác yêu cầu của Cô Hảo:
+// "Tôi muốn khi vào trang web, đầu tiên xuất hiện là phần đăng nhập"
+const RootRoute: React.FC = () => {
+  const { user, profile, role, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-[#DFE7E5]">
+        <div className="flex flex-col items-center gap-3">
+          <div className="w-10 h-10 border-4 border-[#C9942C] border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs font-bold text-[#2D4441]">Đang tải hệ thống...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 🛑 NẾU CHƯA ĐĂNG NHẬP: LẬP TỨC CHUYỂN VÀO TRANG ĐĂNG NHẬP
+  if (!user && !profile) {
+    return <Navigate to="/login" replace />;
+  }
+
+  // NẾU ĐÃ ĐĂNG NHẬP:
+  if (role === 'teacher' || role === 'admin') {
+    return (
+      <MainLayout>
+        <HomePage />
+      </MainLayout>
+    );
+  }
+
+  // Học sinh đã đăng nhập: Chuyển thẳng về Góc học tập học sinh
+  return <Navigate to="/student-dashboard" replace />;
 };
 
 // Layout bọc chung theo phong cách Scandinavian Forest & Golden Ochre (Ảnh mẫu mới)
@@ -121,13 +193,18 @@ export const App: React.FC = () => {
             }
           />
 
-          {/* Trang Chủ */}
+          {/* Trang Gốc (Root): Chưa đăng nhập -> Tự động chuyển vào /login */}
+          <Route path="/" element={<RootRoute />} />
+
+          {/* Trang Chủ (khi đã đăng nhập) */}
           <Route
-            path="/"
+            path="/home"
             element={
-              <MainLayout>
-                <HomePage />
-              </MainLayout>
+              <ProtectedRoute>
+                <MainLayout>
+                  <HomePage />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
 
@@ -135,9 +212,11 @@ export const App: React.FC = () => {
           <Route
             path="/student-dashboard"
             element={
-              <MainLayout>
-                <StudentDashboardPage />
-              </MainLayout>
+              <ProtectedRoute>
+                <MainLayout>
+                  <StudentDashboardPage />
+                </MainLayout>
+              </ProtectedRoute>
             }
           />
 

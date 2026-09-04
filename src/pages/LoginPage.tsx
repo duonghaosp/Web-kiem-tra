@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Globe, Lock, User, Sparkles, Shield, ArrowRight, CheckCircle2 } from 'lucide-react';
 
 export const LoginPage: React.FC = () => {
-  const { signInAsTeacher, signInAsStudent, quickLogin } = useAuth();
+  const { user, profile, role, loading: authLoading, signInAsTeacher, signInAsStudent, quickLogin } = useAuth();
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState<'student' | 'teacher'>('student');
@@ -14,6 +14,17 @@ export const LoginPage: React.FC = () => {
   const [teacherPassword, setTeacherPassword] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
   const [errorMsg, setErrorMsg] = useState<string>('');
+
+  // Nếu người dùng đã đăng nhập từ trước, tự động chuyển vào trang điều khiển
+  useEffect(() => {
+    if (!authLoading && (user || profile)) {
+      if (role === 'teacher' || role === 'admin') {
+        navigate('/teacher-dashboard', { replace: true });
+      } else {
+        navigate('/student-dashboard', { replace: true });
+      }
+    }
+  }, [user, profile, role, authLoading, navigate]);
 
   const handleStudentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -58,8 +69,8 @@ export const LoginPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-[85vh] flex items-center justify-center p-4 sm:p-6 animate-in fade-in duration-300">
-      <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-100 space-y-6">
+    <div className="min-h-screen bg-[#DFE7E5] flex items-center justify-center p-3 sm:p-6 transition-colors">
+      <div className="max-w-md w-full bg-white rounded-3xl p-6 sm:p-8 shadow-2xl border border-slate-200/80 space-y-6 animate-in fade-in zoom-in-95 duration-200">
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-ocean-600 to-teal-500 text-white flex items-center justify-center mx-auto shadow-md">

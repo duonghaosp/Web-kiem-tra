@@ -21,6 +21,7 @@ import {
   Bell,
   MessageSquareQuote,
   Search,
+  Menu,
 } from 'lucide-react';
 import { uploadToStorage } from '../../lib/supabase';
 import { GeoGlobeSticker } from '../common/GeoStickers';
@@ -230,9 +231,23 @@ export const Navbar: React.FC = () => {
         </div>
       )}
 
-      <div className="max-w-[1700px] mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-        {/* Logo & Tên Trường / Tên Môn */}
-        <Link to="/" className="flex items-center gap-2.5 group shrink-0">
+      <div className="max-w-[1700px] mx-auto px-3 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-2.5 sm:gap-4">
+        <div className="flex items-center gap-2">
+          {/* Nút Mở Menu Sidebar trên Điện thoại */}
+          <button
+            type="button"
+            onClick={() => {
+              playSoftClick();
+              window.dispatchEvent(new Event('geo_toggle_mobile_sidebar'));
+            }}
+            className="md:hidden p-2 rounded-2xl bg-[#EDF3F2] hover:bg-[#E5EDEB] text-[#2D4441] transition active:scale-95 flex items-center justify-center border border-[#CFDCD9] shrink-0"
+            title="Mở menu danh mục"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
+          {/* Logo & Tên Trường / Tên Môn */}
+          <Link to="/" className="flex items-center gap-2.5 group shrink-0">
           {schoolLogo ? (
             <img
               src={schoolLogo}
@@ -254,6 +269,7 @@ export const Navbar: React.FC = () => {
             </p>
           </div>
         </Link>
+        </div>
 
         {/* Thanh tìm kiếm viên thuốc (Capsule Search) chuẩn phong cách ảnh mẫu */}
         <div className="hidden md:flex items-center flex-1 max-w-sm mx-4">

@@ -1,5 +1,5 @@
-﻿import React, { useState, useEffect } from 'react';
-import { NavLink } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import {
   Home,
@@ -14,12 +14,16 @@ import {
   Sparkles,
   LogOut,
   Compass,
+  X,
 } from 'lucide-react';
 import { GeoGlobeSticker } from '../common/GeoStickers';
 
 export const Sidebar: React.FC = () => {
   const { profile, role, quickLogin, signOut } = useAuth();
   const isTeacher = role === 'teacher' || role === 'admin';
+  const navigate = useNavigate();
+
+  const [isMobileOpen, setIsMobileOpen] = useState(false);
 
   const [schoolName, setSchoolName] = useState(
     () => localStorage.getItem('geo_school_name') || 'PTDTBT TH&THCS Sì Lờ Lầu'
@@ -30,11 +34,19 @@ export const Sidebar: React.FC = () => {
       const stored = localStorage.getItem('geo_school_name');
       if (stored) setSchoolName(stored);
     };
+    const handleToggleMobile = () => setIsMobileOpen((prev) => !prev);
+    const handleCloseMobile = () => setIsMobileOpen(false);
+
     window.addEventListener('storage', handleUpdate);
     window.addEventListener('geo_settings_updated', handleUpdate);
+    window.addEventListener('geo_toggle_mobile_sidebar', handleToggleMobile);
+    window.addEventListener('geo_close_mobile_sidebar', handleCloseMobile);
+
     return () => {
       window.removeEventListener('storage', handleUpdate);
       window.removeEventListener('geo_settings_updated', handleUpdate);
+      window.removeEventListener('geo_toggle_mobile_sidebar', handleToggleMobile);
+      window.removeEventListener('geo_close_mobile_sidebar', handleCloseMobile);
     };
   }, []);
 
@@ -58,8 +70,8 @@ export const Sidebar: React.FC = () => {
 
   const navItems = isTeacher ? teacherNavItems : studentNavItems;
 
-  return (
-    <aside className="w-full md:w-64 shrink-0 bg-[#2D4441] text-white p-4 sm:p-5 flex flex-col justify-between min-h-[calc(100vh-4rem)] relative z-20 border-r border-[#243835]">
+  const renderSidebarInner = (onItemClick?: () => void) => (
+    <div className="flex flex-col justify-between h-full min-h-full space-y-6">
       <div className="space-y-6">
         {/* Profile Card phong cách Aviation/Scandinavian: Vòng tròn Avatar viền vàng Ochre + Chữ ký Hảo Địa lí */}
         <div className="flex flex-col items-center text-center p-3 rounded-2xl bg-[#233835]/70 border border-[#3A5551]">
@@ -114,6 +126,7 @@ export const Sidebar: React.FC = () => {
               onClick={() => {
                 sessionStorage.removeItem('is_teacher_previewing');
                 quickLogin('teacher', 'Dương Thu Hảo');
+                if (onItemClick) onItemClick();
               }}
               className="w-full mt-1 py-1.5 rounded-xl bg-[#C9942C] hover:bg-[#B58022] text-white font-black text-xs transition active:scale-95 shadow-sm cursor-pointer"
             >
@@ -137,6 +150,9 @@ export const Sidebar: React.FC = () => {
                 key={item.to}
                 to={item.to}
                 end={item.to === '/'}
+                onClick={() => {
+                  if (onItemClick) onItemClick();
+                }}
                 className={({ isActive }) =>
                   `flex items-center gap-3.5 font-extrabold text-xs sm:text-sm transition-all duration-200 cursor-pointer ${
                     isActive
@@ -184,9 +200,11 @@ export const Sidebar: React.FC = () => {
       <div className="pt-4 border-t border-white/10 space-y-3">
         <button
           type="button"
-          onClick={() => {
+          onClick={async () => {
             if (confirm('Cô có chắc chắn muốn đăng xuất khỏi hệ thống?')) {
-              signOut();
+              if (onItemClick) onItemClick();
+              await signOut();
+              navigate('/login');
             }
           }}
           className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-full bg-white/10 hover:bg-white/20 active:scale-95 text-white text-xs font-black transition cursor-pointer border border-white/15 shadow-xs"
@@ -200,6 +218,41 @@ export const Sidebar: React.FC = () => {
           © {schoolName}
         </div>
       </div>
-    </aside>
+    </div>
+  );
+
+  return (
+    <>
+      {/* 1. Desktop Sidebar (Chỉ hiện trên máy tính màn hình lớn >= 768px) */}
+      <aside className="hidden md:flex md:w-64 shrink-0 bg-[#2D4441] text-white p-4 sm:p-5 flex-col justify-between min-h-[calc(100vh-4rem)] relative z-20 border-r border-[#243835]">
+        {renderSidebarInner()}
+      </aside>
+
+      {/* 2. Mobile Drawer (Chỉ mở ra dạng ngăn kéo trượt khi bấm nút Menu trên điện thoại) */}
+      {isMobileOpen && (
+        <div className="fixed inset-0 z-50 md:hidden flex animate-in fade-in duration-200">
+          {/* Backdrop mờ tối */}
+          <div
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
+            onClick={() => setIsMobileOpen(false)}
+          />
+
+          {/* Khung Sidebar trượt từ bên trái */}
+          <div className="relative w-72 max-w-[85vw] bg-[#2D4441] text-white p-5 flex flex-col justify-between h-full shadow-2xl z-10 animate-in slide-in-from-left duration-200 overflow-y-auto">
+            {/* Nút đóng X ở góc trên bên phải */}
+            <button
+              type="button"
+              onClick={() => setIsMobileOpen(false)}
+              className="absolute top-3.5 right-3.5 p-2 rounded-xl bg-white/10 hover:bg-white/20 text-white transition cursor-pointer active:scale-95"
+              title="Đóng menu"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            {renderSidebarInner(() => setIsMobileOpen(false))}
+          </div>
+        </div>
+      )}
+    </>
   );
 };
