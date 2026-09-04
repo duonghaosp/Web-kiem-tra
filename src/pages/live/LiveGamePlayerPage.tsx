@@ -11,7 +11,7 @@ import {
   Zap,
   Award,
 } from 'lucide-react';
-import { KAHOOT_COLORS, LiveGameSync, checkValidActiveRoom } from '../../lib/liveGameEngine';
+import { KAHOOT_COLORS, LiveGameSync, checkValidActiveRoom, getOrCreateDeviceId } from '../../lib/liveGameEngine';
 import { triggerCelebration } from '../../lib/gamification';
 import { supabase, isSupabaseConfigured } from '../../lib/supabase';
 
@@ -85,7 +85,9 @@ export const LiveGamePlayerPage: React.FC = () => {
         }
       });
 
-      // Báo danh vào phòng trên Supabase Database
+      const deviceId = getOrCreateDeviceId();
+
+      // Báo danh vào phòng trên Supabase Database (1 thiết bị chỉ có 1 dòng duy nhất)
       if (isSupabaseConfigured) {
         try {
           const { data: roomData } = await supabase
@@ -95,24 +97,44 @@ export const LiveGamePlayerPage: React.FC = () => {
             .maybeSingle();
 
           if (roomData?.id) {
-            await supabase.from('live_game_participants').insert({
-              room_id: roomData.id,
-              student_name: studentName,
-              score: 0,
-              streak: 0,
-            });
+            // Kiểm tra xem thiết bị này đã từng vào phòng chưa qua avatar_url (lưu deviceId)
+            const { data: existingPart } = await supabase
+              .from('live_game_participants')
+              .select('id')
+              .eq('room_id', roomData.id)
+              .eq('avatar_url', deviceId)
+              .maybeSingle();
+
+            if (existingPart?.id) {
+              // Cùng thiết bị thoát ra vào lại -> CẬP NHẬT tên mới, TUYỆT ĐỐI KHÔNG tạo dòng mới
+              await supabase
+                .from('live_game_participants')
+                .update({ student_name: studentName })
+                .eq('id', existingPart.id);
+            } else {
+              // Thiết bị mới -> Thêm mới kèm deviceId
+              await supabase.from('live_game_participants').insert({
+                room_id: roomData.id,
+                student_name: studentName,
+                avatar_url: deviceId,
+                score: 0,
+                streak: 0,
+              });
+            }
           }
         } catch (e) {
           console.warn('Lỗi lưu participant lên Supabase:', e);
         }
       }
 
-      // Báo danh qua Realtime Broadcast
+      // Báo danh qua Realtime Broadcast: Luôn mang theo deviceId duy nhất
       if (syncRef.current) {
         syncRef.current.broadcast('STUDENT_JOIN', {
-          id: 'p_' + Date.now(),
+          id: deviceId,
+          device_id: deviceId,
           room_id: roomId,
           student_name: studentName,
+          avatar_url: deviceId,
           score: 0,
           streak: 0,
         });
@@ -135,9 +157,10 @@ export const LiveGamePlayerPage: React.FC = () => {
     setChosenOption(idx);
     setGameState('answered');
 
+    const deviceId = getOrCreateDeviceId();
     if (syncRef.current) {
       syncRef.current.broadcast('STUDENT_ANSWER', {
-        participant_id: 'p_' + studentName,
+        participant_id: deviceId,
         student_name: studentName,
         chosen_option: idx,
         response_time_ms: responseTimeMs,

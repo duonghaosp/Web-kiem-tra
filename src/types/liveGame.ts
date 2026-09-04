@@ -12,6 +12,7 @@ export interface LiveGameParticipant {
   id: string;
   room_id: string;
   student_id?: string | null;
+  device_id?: string | null;
   student_name: string;
   avatar_url?: string | null;
   score: number;

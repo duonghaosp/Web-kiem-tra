@@ -329,13 +329,48 @@ export const LiveGameHostPage: React.FC = () => {
   useEffect(() => {
     syncRef.current = new LiveGameSync(roomCode, (event) => {
       if (event.type === 'STUDENT_JOIN') {
-        try { soundFx.playJoin(); } catch (e) {}
+        const deviceId = event.payload.device_id || event.payload.avatar_url || event.payload.id;
+        const newName = event.payload.student_name;
+
         setParticipants((prev) => {
-          if (prev.some((p) => p.student_name === event.payload.student_name)) return prev;
+          // 1. Tìm xem thiết bị này đã có trong phòng chưa (1 thiết bị = 1 người chơi)
+          const existingDeviceIdx = prev.findIndex(
+            (p) => (p as any).device_id === deviceId || p.id === deviceId || p.avatar_url === deviceId
+          );
+
+          if (existingDeviceIdx !== -1) {
+            // CÙNG 1 THIẾT BỊ ĐỔI TÊN: Cập nhật tên của thiết bị đó, KHÔNG THÊM NGƯỜI CHƠI MỚI!
+            const updated = [...prev];
+            updated[existingDeviceIdx] = {
+              ...updated[existingDeviceIdx],
+              student_name: newName,
+              avatar_url: deviceId,
+            };
+            return updated;
+          }
+
+          // 2. Nếu cùng tên thì cập nhật lại device_id
+          const existingNameIdx = prev.findIndex((p) => p.student_name === newName);
+          if (existingNameIdx !== -1) {
+            const updated = [...prev];
+            updated[existingNameIdx] = {
+              ...updated[existingNameIdx],
+              id: deviceId,
+              device_id: deviceId,
+              avatar_url: deviceId,
+            } as any;
+            return updated;
+          }
+
+          // 3. Thiết bị mới hoàn toàn
+          try { soundFx.playJoin(); } catch (e) {}
           return [
             ...prev,
             {
               ...event.payload,
+              id: deviceId,
+              device_id: deviceId,
+              avatar_url: deviceId,
               correct_count: 0,
               wrong_count: 0,
               history: {},
@@ -358,7 +393,12 @@ export const LiveGameHostPage: React.FC = () => {
         // Cập nhật điểm và thống kê số câu đúng / sai cho học sinh
         setParticipants((prev) =>
           prev.map((p) => {
-            if (p.id === participant_id || p.student_name === event.payload.student_name) {
+            const matchesId =
+              p.id === participant_id ||
+              (p as any).device_id === participant_id ||
+              p.avatar_url === participant_id;
+            const matchesName = p.student_name === event.payload.student_name;
+            if (matchesId || matchesName) {
               const newStreak = isCorrect ? p.streak + 1 : 0;
               const earned = calculateSpeedPoints(isCorrect, response_time_ms, timePerQuestion, p.streak);
               return {
@@ -445,7 +485,20 @@ export const LiveGameHostPage: React.FC = () => {
     };
   }, [roomCode]);
 
-  // 1.2 Tự động đồng bộ danh sách học sinh từ Supabase Cloud khi ở phòng chờ
+  // Dọn dẹp các phòng cũ của cùng giáo viên trên Supabase để không bị hiển thị 2 mã PIN
+  useEffect(() => {
+    if (isSupabaseConfigured) {
+      supabase
+        .from('live_game_rooms')
+        .update({ status: 'finished' })
+        .eq('teacher_name', profile?.full_name || 'Cô Dương Thu Hảo')
+        .neq('room_code', roomCode)
+        .neq('status', 'finished')
+        .then(() => {});
+    }
+  }, [roomCode, profile]);
+
+  // 1.2 Tự động đồng bộ danh sách học sinh từ Supabase Cloud khi ở phòng chờ (1 thiết bị = 1 người chơi)
   useEffect(() => {
     if (status !== 'lobby' || !isSupabaseConfigured) return;
 
@@ -465,23 +518,65 @@ export const LiveGameHostPage: React.FC = () => {
 
           if (cloudParts && cloudParts.length > 0) {
             setParticipants((prev) => {
-              const currentNames = new Set(prev.map((p) => p.student_name));
-              const newJoined = cloudParts.filter((cp) => !currentNames.has(cp.student_name));
-              if (newJoined.length === 0) return prev;
+              let hasChange = false;
+              let currentList = [...prev];
 
-              try { soundFx.playJoin(); } catch (e) {}
-              const newItems = newJoined.map((cp) => ({
-                id: cp.id,
-                room_id: roomCode,
-                student_name: cp.student_name,
-                avatar_url: cp.avatar_url,
-                score: cp.score || 0,
-                streak: cp.streak || 0,
-                correct_count: 0,
-                wrong_count: 0,
-                history: {},
-              }));
-              return [...prev, ...newItems];
+              cloudParts.forEach((cp) => {
+                const deviceId = cp.avatar_url || cp.id;
+                const studentName = cp.student_name;
+
+                // 1. Tìm theo deviceId trước
+                const idxByDevice = currentList.findIndex(
+                  (p) =>
+                    (p as any).device_id === deviceId ||
+                    p.id === deviceId ||
+                    p.avatar_url === deviceId
+                );
+
+                if (idxByDevice !== -1) {
+                  // Cùng thiết bị: Cập nhật tên nếu học sinh đổi tên
+                  if (currentList[idxByDevice].student_name !== studentName) {
+                    currentList[idxByDevice] = {
+                      ...currentList[idxByDevice],
+                      student_name: studentName,
+                    };
+                    hasChange = true;
+                  }
+                } else {
+                  // 2. Tìm theo tên nếu chưa có deviceId
+                  const idxByName = currentList.findIndex((p) => p.student_name === studentName);
+                  if (idxByName !== -1) {
+                    currentList[idxByName] = {
+                      ...currentList[idxByName],
+                      id: deviceId,
+                      device_id: deviceId,
+                      avatar_url: deviceId,
+                    } as any;
+                    hasChange = true;
+                  } else {
+                    // 3. Người chơi mới thực sự
+                    hasChange = true;
+                    currentList.push({
+                      id: deviceId,
+                      device_id: deviceId,
+                      room_id: roomCode,
+                      student_name: studentName,
+                      avatar_url: cp.avatar_url,
+                      score: cp.score || 0,
+                      streak: cp.streak || 0,
+                      correct_count: 0,
+                      wrong_count: 0,
+                      history: {},
+                    } as any);
+                  }
+                }
+              });
+
+              if (hasChange) {
+                try { soundFx.playJoin(); } catch (e) {}
+                return currentList;
+              }
+              return prev;
             });
           }
         }

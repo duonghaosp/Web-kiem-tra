@@ -321,7 +321,25 @@ export function removeActiveRoom(pin: string): void {
 }
 
 /**
- * Lấy danh sách các phòng đấu đang mở hợp lệ từ LocalStorage
+ * Lấy hoặc tạo mới mã định danh thiết bị duy nhất của học sinh (Lưu trong LocalStorage trình duyệt)
+ * Giúp nhận diện chính xác 1 thiết bị chỉ tham gia phòng 1 lần, chống tạo trùng nhiều tên
+ */
+export function getOrCreateDeviceId(): string {
+  if (typeof window === 'undefined') return 'server_device';
+  try {
+    let devId = localStorage.getItem('geo_live_device_id');
+    if (!devId) {
+      devId = 'dev_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
+      localStorage.setItem('geo_live_device_id', devId);
+    }
+    return devId;
+  } catch {
+    return 'dev_' + Math.random().toString(36).substring(2, 10);
+  }
+}
+
+/**
+ * Lấy danh sách các phòng đấu đang mở hợp lệ từ LocalStorage (trong vòng 45 phút)
  */
 export function getActiveRooms(): ActiveLiveRoom[] {
   try {
@@ -329,7 +347,8 @@ export function getActiveRooms(): ActiveLiveRoom[] {
     if (!raw) return [];
     const rooms: ActiveLiveRoom[] = JSON.parse(raw);
     const now = Date.now();
-    return rooms.filter((r) => now - (r.updated_at || 0) < 6 * 60 * 60 * 1000 && r.status !== 'finished');
+    // Chỉ giữ phòng đang mở trong vòng 45 phút gần nhất
+    return rooms.filter((r) => now - (r.updated_at || 0) < 45 * 60 * 1000 && r.status !== 'finished');
   } catch (e) {
     console.warn('Lỗi đọc active rooms:', e);
     return [];
@@ -337,17 +356,19 @@ export function getActiveRooms(): ActiveLiveRoom[] {
 }
 
 /**
- * Lấy danh sách các phòng đấu đang mở từ Supabase Cloud (cho điện thoại học sinh)
+ * Lấy danh sách các phòng đấu đang mở từ Supabase Cloud (chỉ lấy phòng mở trong 45 phút gần nhất)
  */
 export async function fetchActiveRooms(): Promise<ActiveLiveRoom[]> {
   if (isSupabaseConfigured) {
     try {
+      const recentTimeCutoff = new Date(Date.now() - 45 * 60 * 1000).toISOString();
       const { data, error } = await supabase
         .from('live_game_rooms')
         .select('*')
         .neq('status', 'finished')
+        .gte('created_at', recentTimeCutoff)
         .order('created_at', { ascending: false })
-        .limit(5);
+        .limit(3);
 
       if (!error && data && data.length > 0) {
         return data.map((r: any) => ({
