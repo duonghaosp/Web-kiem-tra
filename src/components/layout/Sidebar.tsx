@@ -25,14 +25,23 @@ export const Sidebar: React.FC = () => {
 
   const [isMobileOpen, setIsMobileOpen] = useState(false);
 
-  const [schoolName, setSchoolName] = useState(
-    () => localStorage.getItem('geo_school_name') || 'PTDTBT TH&THCS Sì Lờ Lầu'
-  );
+  const [schoolName, setSchoolName] = useState(() => {
+    let stored = localStorage.getItem('geo_school_name');
+    if (stored && stored.includes('Sì Lờ Lầu')) {
+      stored = stored.replace(/Sì Lờ Lầu/g, 'Sì Lở Lầu');
+      localStorage.setItem('geo_school_name', stored);
+    }
+    return stored || 'Trường PTDTBT TH&THCS Sì Lở Lầu';
+  });
 
   useEffect(() => {
     const handleUpdate = () => {
-      const stored = localStorage.getItem('geo_school_name');
-      if (stored) setSchoolName(stored);
+      let stored = localStorage.getItem('geo_school_name');
+      if (stored && stored.includes('Sì Lờ Lầu')) {
+        stored = stored.replace(/Sì Lờ Lầu/g, 'Sì Lở Lầu');
+        localStorage.setItem('geo_school_name', stored);
+      }
+      setSchoolName(stored || 'Trường PTDTBT TH&THCS Sì Lở Lầu');
     };
     const handleToggleMobile = () => setIsMobileOpen((prev) => !prev);
     const handleCloseMobile = () => setIsMobileOpen(false);
@@ -107,7 +116,7 @@ export const Sidebar: React.FC = () => {
           </div>
 
           <p className="text-[10px] text-[#9EBAB5] font-semibold mt-1 truncate max-w-[190px]">
-            {isTeacher ? 'PTDTBT TH&THCS Sì Lờ Lầu' : 'Góc Học Tập Học Sinh'}
+            {isTeacher ? 'Trường PTDTBT TH&THCS Sì Lở Lầu' : 'Góc Học Tập Học Sinh'}
           </p>
         </div>
 

@@ -37,9 +37,14 @@ export const GeneralSettingsPage: React.FC = () => {
   const [backupMessage, setBackupMessage] = useState<string | null>(null);
 
   // 1. Thông tin trường học & đơn vị
-  const [schoolName, setSchoolName] = useState(
-    () => localStorage.getItem('geo_school_name') || 'Trường PTDTBT TH&THCS Sì Lờ Lầu'
-  );
+  const [schoolName, setSchoolName] = useState(() => {
+    let stored = localStorage.getItem('geo_school_name');
+    if (stored && stored.includes('Sì Lờ Lầu')) {
+      stored = stored.replace(/Sì Lờ Lầu/g, 'Sì Lở Lầu');
+      localStorage.setItem('geo_school_name', stored);
+    }
+    return stored || 'Trường PTDTBT TH&THCS Sì Lở Lầu';
+  });
   const [departmentName, setDepartmentName] = useState(
     () => localStorage.getItem('geo_dept_name') || 'Tổ Khoa học Xã hội'
   );
@@ -545,7 +550,7 @@ export const GeneralSettingsPage: React.FC = () => {
                   type="text"
                   value={schoolName}
                   onChange={(e) => setSchoolName(e.target.value)}
-                  placeholder="VD: Trường PTDTBT TH&THCS Sì Lờ Lầu"
+                  placeholder="VD: Trường PTDTBT TH&THCS Sì Lở Lầu"
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-ocean-500"
                 />
               </div>

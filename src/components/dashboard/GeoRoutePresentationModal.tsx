@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, Maximize2, Minimize2, Volume2, VolumeX, Compass, Navigation, Wind, Waves, Globe, Sparkles, MapPin } from 'lucide-react';
 import { playSoftClick, playSwitchTab, isSoundEnabled, toggleSoundEnabled } from '../../utils/soundEffects';
 
@@ -75,7 +75,7 @@ export const GeoRoutePresentationModal: React.FC<GeoRoutePresentationModalProps>
                   GIÁO CỤ TRỰC QUAN TRÊN LỚP
                 </span>
                 <span className="text-xs text-[#8EAFA9] font-medium hidden sm:inline">
-                  • PTDTBT TH&THCS Sì Lờ Lầu
+                  • Trường PTDTBT TH&THCS Sì Lở Lầu
                 </span>
               </div>
               <h2 className="text-base sm:text-lg font-black tracking-tight text-white flex items-center gap-1.5 mt-0.5">
@@ -163,7 +163,7 @@ export const GeoRoutePresentationModal: React.FC<GeoRoutePresentationModalProps>
           </div>
 
           <div className="text-xs text-[#A8C4BF] font-semibold hidden md:block">
-            📍 Điểm mốc trọng tâm: <strong className="text-white">PTDTBT TH&THCS Sì Lờ Lầu (22°34'B, 103°28'Đ)</strong>
+            📍 Điểm mốc trọng tâm: <strong className="text-white">Trường PTDTBT TH&THCS Sì Lở Lầu (22°34'B, 103°28'Đ)</strong>
           </div>
         </div>
 
@@ -278,17 +278,17 @@ export const GeoRoutePresentationModal: React.FC<GeoRoutePresentationModalProps>
                 </>
               )}
 
-              {/* Tọa độ PTDTBT TH&THCS Sì Lờ Lầu (Điểm mốc nhấp nháy phát sóng radar - Gợi ý 1) */}
+              {/* Tọa độ PTDTBT TH&THCS Sì Lở Lầu (Điểm mốc nhấp nháy phát sóng radar - Gợi ý 1) */}
               <g transform="translate(480, 148)">
                 {/* Vòng tròn Radar nhấp nháy (Ping Ripple Effect) */}
                 <circle cx="0" cy="0" r="14" fill="#C9942C" opacity="0.35" className="animate-ping" />
                 <circle cx="0" cy="0" r="7" fill="#C9942C" opacity="0.6" />
                 <circle cx="0" cy="0" r="4.5" fill="#EF4444" stroke="#FFFFFF" strokeWidth="1.5" />
 
-                {/* Nhãn điểm trường Sì Lờ Lầu */}
+                {/* Nhãn điểm trường Sì Lở Lầu */}
                 <rect x="-65" y="-30" width="130" height="20" rx="10" fill="#162220" stroke="#C9942C" strokeWidth="1" />
                 <text x="0" y="-16" textAnchor="middle" fill="#FFFFFF" fontSize="9.5" fontWeight="bold">
-                  📍 TH&THCS Sì Lờ Lầu
+                  📍 TH&THCS Sì Lở Lầu
                 </text>
               </g>
 
@@ -307,7 +307,7 @@ export const GeoRoutePresentationModal: React.FC<GeoRoutePresentationModalProps>
               <div className="flex items-center gap-4">
                 <span className="flex items-center gap-1.5">
                   <span className="w-2.5 h-2.5 rounded-full bg-[#EF4444] inline-block animate-pulse"></span>
-                  <span>Tọa độ Trường Sì Lờ Lầu: <strong>22°34'B, 103°28'Đ</strong></span>
+                  <span>Tọa độ Trường Sì Lở Lầu: <strong>22°34'B, 103°28'Đ</strong></span>
                 </span>
                 <span className="flex items-center gap-1.5">
                   <span className="w-4 h-0.5 bg-[#C9942C] inline-block border-t border-dashed"></span>
@@ -337,7 +337,7 @@ export const GeoRoutePresentationModal: React.FC<GeoRoutePresentationModalProps>
                 )}
                 {selectedRoute === 'monsoon' && (
                   <div className="space-y-2 text-xs text-[#D1E3DF] leading-relaxed">
-                    <p>• <strong>Gió Mùa Mùa Đông:</strong> Hướng Đông Bắc, hoạt động từ tháng 11 đến tháng 4 năm sau, làm miền Bắc và vùng cao Sì Lờ Lầu có mùa đông giá rét, khô hanh vào đầu mùa và mưa phùn vào cuối mùa.</p>
+                    <p>• <strong>Gió Mùa Mùa Đông:</strong> Hướng Đông Bắc, hoạt động từ tháng 11 đến tháng 4 năm sau, làm miền Bắc và vùng cao Sì Lở Lầu có mùa đông giá rét, khô hanh vào đầu mùa và mưa phùn vào cuối mùa.</p>
                     <p>• <strong>Gió Mùa Mùa Hạ:</strong> Hướng Tây Nam, xuất phát từ áp cao chí tuyến, gây mưa lớn cho cả nước vào mùa hè.</p>
                   </div>
                 )}
@@ -351,10 +351,10 @@ export const GeoRoutePresentationModal: React.FC<GeoRoutePresentationModalProps>
 
               <div className="p-4 rounded-2xl bg-[#233835] border border-[#3A5551] space-y-2 text-xs">
                 <div className="text-[11px] font-black text-[#A8C4BF] uppercase tracking-wider">
-                  ỨNG DỤNG TẠI ĐỊA PHƯƠNG SÌ LỜ LẦU
+                  ỨNG DỤNG TẠI ĐỊA PHƯƠNG SÌ LỞ LẦU
                 </div>
                 <p className="text-[#C0D6D2] leading-relaxed">
-                  Trường PTDTBT TH&THCS Sì Lờ Lầu nằm ở độ cao trên 1.500m so với mực nước biển, chịu ảnh hưởng mạnh của gió mùa Đông Bắc và địa hình đồi núi hiểm trở Tây Bắc, tạo nên tiểu vùng khí hậu á nhiệt đới núi cao đặc thù.
+                  Trường PTDTBT TH&THCS Sì Lở Lầu nằm ở độ cao trên 1.500m so với mực nước biển, chịu ảnh hưởng mạnh của gió mùa Đông Bắc và địa hình đồi núi hiểm trở Tây Bắc, tạo nên tiểu vùng khí hậu á nhiệt đới núi cao đặc thù.
                 </p>
               </div>
             </div>

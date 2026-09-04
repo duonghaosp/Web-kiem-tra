@@ -1,6 +1,6 @@
 -- ==============================================================================
 -- 🌏 HỆ THỐNG KIỂM TRA ĐÁNH GIÁ MÔN ĐỊA LÍ THCS - BẢN THIẾT LẬP TOÀN DIỆN
--- Dành cho: Cô Dương Thu Hảo (PTDTBT TH&THCS Sì Lờ Lầu, Phong Thổ, Lai Châu)
+-- Dành cho: Cô Dương Thu Hảo (Trường PTDTBT TH&THCS Sì Lở Lầu, Phong Thổ, Lai Châu)
 -- ==============================================================================
 -- Hướng dẫn: 
 -- 1. Đăng nhập https://supabase.com -> Chọn Project của cô
@@ -488,7 +488,7 @@ SET name = EXCLUDED.name,
 INSERT INTO public.system_settings (key, value)
 VALUES
     ('school_info', '{
-        "school_name": "PTDTBT TH&THCS Sì Lờ Lầu",
+        "school_name": "Trường PTDTBT TH&THCS Sì Lở Lầu",
         "teacher_name": "Cô Dương Thu Hảo",
         "subject": "Địa lí THCS (Khối 6, 7, 8, 9)",
         "district": "Phong Thổ",
@@ -497,7 +497,7 @@ VALUES
     ('homepage_banner', '{
         "title": "HỆ THỐNG KIỂM TRA & ĐÁNH GIÁ ĐỊA LÍ THCS",
         "subtitle": "Khám phá Trái Đất - Chinh phục Tri thức cùng Cô Hảo",
-        "announcement": "Chào mừng các em học sinh tham gia rèn luyện kiến thức Địa lí tại Sì Lờ Lầu!"
+        "announcement": "Chào mừng các em học sinh tham gia rèn luyện kiến thức Địa lí tại Sì Lở Lầu!"
     }'::jsonb)
 ON CONFLICT (key) DO NOTHING;
 

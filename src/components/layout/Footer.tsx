@@ -2,17 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { Globe, Heart } from 'lucide-react';
 
 export const Footer: React.FC = () => {
-  const [schoolName, setSchoolName] = useState(
-    () => localStorage.getItem('geo_school_name') || 'Trường PTDTBT TH&THCS Sì Lờ Lầu'
-  );
+  const [schoolName, setSchoolName] = useState(() => {
+    let stored = localStorage.getItem('geo_school_name');
+    if (stored && stored.includes('Sì Lờ Lầu')) {
+      stored = stored.replace(/Sì Lờ Lầu/g, 'Sì Lở Lầu');
+      localStorage.setItem('geo_school_name', stored);
+    }
+    return stored || 'Trường PTDTBT TH&THCS Sì Lở Lầu';
+  });
   const [schoolLogo, setSchoolLogo] = useState(
     () => localStorage.getItem('geo_school_logo') || ''
   );
 
   useEffect(() => {
     const handleUpdate = () => {
-      const stored = localStorage.getItem('geo_school_name');
-      if (stored) setSchoolName(stored);
+      let stored = localStorage.getItem('geo_school_name');
+      if (stored && stored.includes('Sì Lờ Lầu')) {
+        stored = stored.replace(/Sì Lờ Lầu/g, 'Sì Lở Lầu');
+        localStorage.setItem('geo_school_name', stored);
+      }
+      setSchoolName(stored || 'Trường PTDTBT TH&THCS Sì Lở Lầu');
       const storedLogo = localStorage.getItem('geo_school_logo');
       setSchoolLogo(storedLogo || '');
     };

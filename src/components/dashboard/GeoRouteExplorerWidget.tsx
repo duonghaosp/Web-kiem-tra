@@ -1,4 +1,4 @@
-﻿import React, { useState } from 'react';
+import React, { useState } from 'react';
 import { Compass, Navigation, Sparkles, Maximize2 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { playSoftClick, playSwitchTab } from '../../utils/soundEffects';
@@ -23,7 +23,7 @@ const ROUTE_OPTIONS: RouteOption[] = [
     to: 'GREENWICH (UK)',
     distance: '40,075 KM • XÍCH ĐẠO',
     description: 'Hành trình thám hiểm vĩ tuyến 0° và kinh tuyến gốc nối liền Đông - Tây bán cầu.',
-    fromLabel: 'Sì Lờ Lầu',
+    fromLabel: 'Sì Lở Lầu',
     toLabel: 'Greenwich',
   },
   {
@@ -97,7 +97,7 @@ export const GeoRouteExplorerWidget: React.FC = () => {
           </div>
         </div>
 
-        {/* 2. Bản đồ thế giới Dot-Matrix & Điểm Sì Lờ Lầu phát sóng Radar (Gợi ý 1) */}
+        {/* 2. Bản đồ thế giới Dot-Matrix & Điểm Sì Lở Lầu phát sóng Radar (Gợi ý 1) */}
         <div className="relative h-36 rounded-2xl bg-[#233835]/90 border border-[#3A5551] p-2 flex items-center justify-center overflow-hidden">
           {/* Lưới chấm bản đồ thế giới giả lập */}
           <svg className="absolute inset-0 w-full h-full opacity-20 pointer-events-none" viewBox="0 0 400 160">
@@ -135,7 +135,7 @@ export const GeoRouteExplorerWidget: React.FC = () => {
               fill="none"
             />
 
-            {/* Điểm xuất phát Sì Lờ Lầu nhấp nháy Radar (Gợi ý 1) */}
+            {/* Điểm xuất phát Sì Lở Lầu nhấp nháy Radar (Gợi ý 1) */}
             <g transform="translate(85, 85)">
               <circle cx="0" cy="0" r="11" fill="#C9942C" opacity="0.45" className="animate-ping" />
               <circle cx="0" cy="0" r="6" fill="#C9942C" opacity="0.8" />
