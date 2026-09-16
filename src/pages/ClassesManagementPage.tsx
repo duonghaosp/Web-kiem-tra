@@ -32,7 +32,13 @@ import {
   saveStoredStudents,
   reindexAllStudentCodes,
 } from '../data/studentsData';
-import { saveStudentsToCloud, fetchStudentsFromCloud, autoSyncStudentsWithCloud } from '../lib/studentCloudSync';
+import {
+  saveStudentsToCloud,
+  fetchStudentsFromCloud,
+  saveClassesToCloud,
+  fetchClassesFromCloud,
+  autoSyncStudentsWithCloud,
+} from '../lib/studentCloudSync';
 
 export const ClassesManagementPage: React.FC = () => {
   const [academicYear, setAcademicYear] = useState<string>(() => {
@@ -106,11 +112,12 @@ export const ClassesManagementPage: React.FC = () => {
     setIsSyncingCloud(true);
     try {
       await saveStudentsToCloud(students);
+      await saveClassesToCloud(classes);
       const nowStr = new Date().toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' });
       setLastSyncedTime(nowStr);
       localStorage.setItem('geo_last_cloud_sync_time', nowStr);
       alert(
-        `🎉 Đã đồng bộ thành công toàn bộ ${students.length} học sinh lên Supabase Cloud!\nĐiện thoại của học sinh quét mã QR sẽ nhận ngay danh sách chuẩn này.`
+        `🎉 Đã đồng bộ thành công toàn bộ ${students.length} học sinh và ${classes.length} lớp học lên Supabase Cloud!\nĐiện thoại của học sinh quét mã QR sẽ nhận ngay danh sách chuẩn này.`
       );
     } catch (err) {
       console.error('Lỗi đồng bộ:', err);
@@ -120,10 +127,10 @@ export const ClassesManagementPage: React.FC = () => {
     }
   };
 
-  // Hàm lưu danh sách lớp xuống LocalStorage
+  // Hàm lưu danh sách lớp xuống LocalStorage & Supabase Cloud
   const saveClasses = (newClasses: ClassItem[]) => {
     setClasses(newClasses);
-    localStorage.setItem('geo_classes_list', JSON.stringify(newClasses));
+    saveClassesToCloud(newClasses);
   };
 
   // Khôi phục 16 lớp THCS mặc định nếu bị xóa nhầm
@@ -164,26 +171,15 @@ export const ClassesManagementPage: React.FC = () => {
     async function loadData() {
       // 1. Tự động đồng bộ hai chiều học sinh giữa LocalStorage và Cloud
       await autoSyncStudentsWithCloud();
-      const cloudStudents = await fetchStudentsFromCloud();
+      const [cloudClasses, cloudStudents] = await Promise.all([
+        fetchClassesFromCloud(),
+        fetchStudentsFromCloud(),
+      ]);
+      if (cloudClasses && cloudClasses.length > 0) {
+        setClasses(cloudClasses);
+      }
       if (cloudStudents && cloudStudents.length > 0) {
         setStudents(cloudStudents);
-      }
-
-      if (isSupabaseConfigured) {
-        try {
-          const { data, error } = await supabase
-            .from('classes')
-            .select('*')
-            .order('grade', { ascending: true })
-            .order('name', { ascending: true });
-
-          if (data && data.length > 0) {
-            const normalized = data.map((c: any) => ({ ...c, grade: Number(c.grade) }));
-            saveClasses(normalized);
-          }
-        } catch (e) {
-          console.warn('Lỗi đọc lớp từ Supabase:', e);
-        }
       }
     }
     loadData();

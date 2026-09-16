@@ -8,16 +8,20 @@ const CLOUD_STUDENTS_KEY = 'geo_classes_students_cloud';
 const CLOUD_CLASSES_KEY = 'geo_classes_list_cloud';
 
 // 1. Lưu danh sách học sinh (Đồng bộ đồng thời LocalStorage & Supabase Cloud)
-export async function saveStudentsToCloud(students: Profile[]): Promise<void> {
-  if (!Array.isArray(students) || students.length === 0) return;
+export async function saveStudentsToCloud(students: Profile[]): Promise<boolean> {
+  if (!Array.isArray(students)) return false;
 
   // Lưu cục bộ để hiển thị ngay tức thì trên thiết bị hiện tại
-  localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(students));
-  window.dispatchEvent(new Event('geo_classes_students_updated'));
+  try {
+    localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(students));
+    window.dispatchEvent(new Event('geo_classes_students_updated'));
+  } catch (e) {
+    console.warn('Lỗi lưu LocalStorage students:', e);
+  }
 
   if (isSupabaseConfigured) {
     try {
-      await supabase.from('system_settings').upsert(
+      const { error } = await supabase.from('system_settings').upsert(
         {
           key: CLOUD_STUDENTS_KEY,
           value: {
@@ -27,11 +31,18 @@ export async function saveStudentsToCloud(students: Profile[]): Promise<void> {
         },
         { onConflict: 'key' }
       );
+      if (error) {
+        console.warn('Lỗi Supabase upsert students:', error);
+        return false;
+      }
       console.log('✅ Đã đồng bộ danh sách học sinh lên Supabase Cloud:', students.length);
+      return true;
     } catch (err) {
       console.warn('Lỗi đồng bộ students lên Supabase Cloud:', err);
+      return false;
     }
   }
+  return true;
 }
 
 // 2. Tải danh sách học sinh từ Supabase Cloud về máy/điện thoại
@@ -43,13 +54,13 @@ export async function fetchStudentsFromCloud(): Promise<Profile[]> {
   }
 
   try {
-    const { data: row } = await supabase
+    const { data: row, error } = await supabase
       .from('system_settings')
       .select('value')
       .eq('key', CLOUD_STUDENTS_KEY)
       .maybeSingle();
 
-    if (row?.value?.students && Array.isArray(row.value.students) && row.value.students.length > 0) {
+    if (!error && row?.value?.students && Array.isArray(row.value.students) && row.value.students.length > 0) {
       const cloudStudents: Profile[] = row.value.students;
 
       // Lưu vào LocalStorage của thiết bị (đặc biệt là điện thoại) để các lần sau nạp tức thì
@@ -57,8 +68,7 @@ export async function fetchStudentsFromCloud(): Promise<Profile[]> {
       window.dispatchEvent(new Event('geo_classes_students_updated'));
       return cloudStudents;
     } else if (localStudents && localStudents.length > 0) {
-      // Nếu Cloud chưa có mà thiết bị hiện tại (máy tính cô Hảo) đang có danh sách học sinh thật
-      // -> Tự động đẩy ngay lên Cloud để mọi điện thoại quét QR đều nhận được!
+      // Nếu Cloud chưa có mà thiết bị hiện tại đang có danh sách -> Đẩy lên Cloud
       await saveStudentsToCloud(localStudents);
       return localStudents;
     }
@@ -69,7 +79,71 @@ export async function fetchStudentsFromCloud(): Promise<Profile[]> {
   return localStudents;
 }
 
-// 3. Tự động đồng bộ hai chiều (Khởi chạy khi mở ứng dụng)
+// 3. Lưu danh sách Lớp học lên Supabase Cloud
+export async function saveClassesToCloud(classes: ClassItem[]): Promise<boolean> {
+  if (!Array.isArray(classes)) return false;
+
+  try {
+    localStorage.setItem(LOCAL_CLASSES_KEY, JSON.stringify(classes));
+    window.dispatchEvent(new Event('geo_classes_list_updated'));
+  } catch (e) {
+    console.warn('Lỗi lưu LocalStorage classes:', e);
+  }
+
+  if (isSupabaseConfigured) {
+    try {
+      const { error } = await supabase.from('system_settings').upsert(
+        {
+          key: CLOUD_CLASSES_KEY,
+          value: {
+            classes,
+            updated_at: new Date().toISOString(),
+          },
+        },
+        { onConflict: 'key' }
+      );
+      if (!error) {
+        console.log('✅ Đã đồng bộ danh sách lớp học lên Supabase Cloud:', classes.length);
+        return true;
+      }
+    } catch (err) {
+      console.warn('Lỗi đồng bộ classes lên Supabase Cloud:', err);
+    }
+  }
+  return true;
+}
+
+// 4. Tải danh sách Lớp học từ Supabase Cloud
+export async function fetchClassesFromCloud(): Promise<ClassItem[]> {
+  try {
+    const saved = localStorage.getItem(LOCAL_CLASSES_KEY);
+    const localClasses: ClassItem[] = saved ? JSON.parse(saved) : INITIAL_CLASSES;
+
+    if (!isSupabaseConfigured) return localClasses;
+
+    const { data: row, error } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', CLOUD_CLASSES_KEY)
+      .maybeSingle();
+
+    if (!error && row?.value?.classes && Array.isArray(row.value.classes) && row.value.classes.length > 0) {
+      const cloudClasses: ClassItem[] = row.value.classes;
+      localStorage.setItem(LOCAL_CLASSES_KEY, JSON.stringify(cloudClasses));
+      window.dispatchEvent(new Event('geo_classes_list_updated'));
+      return cloudClasses;
+    } else if (localClasses && localClasses.length > 0) {
+      await saveClassesToCloud(localClasses);
+      return localClasses;
+    }
+    return localClasses;
+  } catch (err) {
+    console.warn('Lỗi tải classes từ Cloud:', err);
+    return INITIAL_CLASSES;
+  }
+}
+
+// 5. Tự động đồng bộ hai chiều (Khởi chạy khi mở ứng dụng)
 export async function autoSyncStudentsWithCloud(): Promise<void> {
   if (!isSupabaseConfigured) return;
 
@@ -85,16 +159,9 @@ export async function autoSyncStudentsWithCloud(): Promise<void> {
 
     const cloudStudents: Profile[] = row?.value?.students || [];
 
-    // Nếu trên máy tính cô Hảo đã có danh sách học sinh thật (ví dụ Lý Linh Bình...)
-    // mà trên Cloud chưa có hoặc số lượng ít hơn -> Đẩy danh sách của cô lên Cloud ngay lập tức!
-    const hasRealLocalStudents = localStudents.some(
-      (s) => s.full_name.includes('Linh Bình') || s.class_name === 'Lớp 7A4'
-    );
-
-    if (localStudents.length > 0 && (cloudStudents.length === 0 || hasRealLocalStudents)) {
+    if (localStudents.length > 0 && cloudStudents.length === 0) {
       await saveStudentsToCloud(localStudents);
     } else if (cloudStudents.length > 0 && localStudents.length === 0) {
-      // Nếu là điện thoại mới quét mã -> Kéo danh sách học sinh từ Cloud về máy
       localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(cloudStudents));
       window.dispatchEvent(new Event('geo_classes_students_updated'));
     }

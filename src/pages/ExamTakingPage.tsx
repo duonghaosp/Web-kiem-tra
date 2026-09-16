@@ -107,6 +107,14 @@ export const ExamTakingPage: React.FC = () => {
     };
   }, []);
 
+  // Danh sách các lớp được giao bài thi này
+  const availableAssignmentClasses = useMemo<string[]>(() => {
+    if (currentAssignment?.target_ids && currentAssignment.target_ids.length > 0) {
+      return currentAssignment.target_ids;
+    }
+    return INITIAL_CLASSES.filter((c) => Number(c.grade) === Number(inputGrade)).map((c) => c.name);
+  }, [currentAssignment, inputGrade]);
+
   // Danh sách học sinh theo lớp đang chọn (SẮP XẾP CHUẨN THEO TÊN HỌC SINH VIỆT NAM: A, B, C...)
   const classStudents = useMemo<Profile[]>(() => {
     return allSystemStudents
@@ -590,26 +598,55 @@ export const ExamTakingPage: React.FC = () => {
             {loginMethod === 'by_name' ? (
               <form onSubmit={handleSelectNameLogin} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                    Lớp của em:
-                  </label>
-                  <select
-                    value={selectedClass}
-                    onChange={(e) => {
-                      setSelectedClass(e.target.value);
-                      setSelectedStudentId('');
-                    }}
-                    className="w-full px-3.5 py-2.5 rounded-2xl border border-slate-300 text-xs sm:text-sm font-bold text-slate-800 focus:ring-2 focus:ring-ocean-500 bg-white"
-                  >
-                    {(currentAssignment?.target_ids && currentAssignment.target_ids.length > 0
-                      ? currentAssignment.target_ids
-                      : INITIAL_CLASSES.filter((c) => Number(c.grade) === Number(inputGrade)).map((c) => c.name)
-                    ).map((cName) => (
-                      <option key={cName} value={cName}>
-                        {cName}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700">
+                      Lớp của em:
+                    </label>
+                    {availableAssignmentClasses.length > 1 && (
+                      <span className="text-[11px] font-semibold text-ocean-700 bg-ocean-50 px-2 py-0.5 rounded-md">
+                        Bài thi giao cho {availableAssignmentClasses.length} lớp
+                      </span>
+                    )}
+                  </div>
+
+                  {availableAssignmentClasses.length > 1 ? (
+                    <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-2">
+                      {availableAssignmentClasses.map((cName) => {
+                        const isSelected = selectedClass === cName;
+                        const count = allSystemStudents.filter((s) => s.class_name === cName).length;
+                        return (
+                          <button
+                            key={cName}
+                            type="button"
+                            onClick={() => {
+                              setSelectedClass(cName);
+                              setSelectedStudentId('');
+                            }}
+                            className={`py-2.5 px-3 rounded-2xl border text-xs font-black transition flex flex-col items-center justify-center gap-0.5 cursor-pointer ${
+                              isSelected
+                                ? 'bg-ocean-600 text-white border-ocean-600 shadow-sm ring-2 ring-ocean-200'
+                                : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200'
+                            }`}
+                          >
+                            <span>{cName}</span>
+                            <span className={`text-[10px] font-normal ${isSelected ? 'text-ocean-100' : 'text-slate-400'}`}>
+                              ({count} HS)
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between p-3 rounded-2xl bg-ocean-50 border border-ocean-200 text-ocean-950 mb-2">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2.5 h-2.5 rounded-full bg-ocean-600"></span>
+                        <span className="text-xs font-black">{availableAssignmentClasses[0] || selectedClass}</span>
+                      </div>
+                      <span className="text-xs font-bold text-ocean-700">
+                        {classStudents.length} Học sinh
+                      </span>
+                    </div>
+                  )}
                 </div>
 
                 <div>
@@ -618,7 +655,7 @@ export const ExamTakingPage: React.FC = () => {
                       Họ và tên của em ({classStudents.length} học sinh):
                     </label>
                     <span className="text-[11px] font-semibold text-ocean-700 bg-ocean-50 px-2 py-0.5 rounded-md">
-                      Xếp theo tên (A - Z)
+                      {selectedClass} • Xếp theo tên (A - Z)
                     </span>
                   </div>
 
@@ -626,7 +663,7 @@ export const ExamTakingPage: React.FC = () => {
                   <div className="relative mb-2">
                     <input
                       type="text"
-                      placeholder="🔍 Gõ tên của em để tìm nhanh (Ví dụ: Anh, Bách, Mai, Say...)"
+                      placeholder={`🔍 Gõ tên của em trong ${selectedClass} để tìm nhanh (Ví dụ: Anh, Bình, Dung, Mai...)`}
                       value={studentSearchKeyword}
                       onChange={(e) => setStudentSearchKeyword(e.target.value)}
                       className="w-full px-3.5 py-2 text-xs rounded-xl border border-slate-300 focus:ring-2 focus:ring-ocean-500 bg-slate-50 font-medium"
@@ -650,17 +687,24 @@ export const ExamTakingPage: React.FC = () => {
                   >
                     <option value="">
                       {filteredClassStudents.length === 0
-                        ? '-- Không tìm thấy học sinh nào trùng khớp --'
-                        : '-- Bấm vào đây để chọn đúng tên của em --'}
+                        ? `-- ${selectedClass} chưa có học sinh nào --`
+                        : `-- Bấm vào đây để chọn đúng tên của em trong ${selectedClass} --`}
                     </option>
                     {filteredClassStudents.map((st: Profile, idx: number) => (
                       <option key={st.id} value={st.id}>
-                        {idx + 1}. {st.full_name}
+                        {idx + 1}. {st.full_name} {st.student_code ? `(${st.student_code})` : ''}
                       </option>
                     ))}
                   </select>
+
+                  {classStudents.length === 0 && (
+                    <div className="mt-2 p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-800 flex items-center gap-2">
+                      <span>⚠️ {selectedClass} hiện chưa có danh sách học sinh. Cô hãy nạp danh sách trong phần Quản lý Lớp học nhé!</span>
+                    </div>
+                  )}
+
                   <p className="text-[11px] text-slate-400 mt-1">
-                    💡 Danh sách đã được sắp xếp chuẩn theo Tên (A - Z). Em hãy bấm chọn đúng tên của mình nhé!
+                    💡 Danh sách của <strong>{selectedClass}</strong> đã được sắp xếp chuẩn theo Tên (A - Z). Em hãy bấm chọn đúng tên của mình nhé!
                   </p>
                 </div>
 

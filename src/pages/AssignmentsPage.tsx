@@ -285,13 +285,25 @@ export const AssignmentsPage: React.FC = () => {
     }
   }, [selectedCategory]);
 
-  // Danh sách 4 lớp của khối
-  const availableClassesForGrade = [
-    `Lớp ${createGrade}A1`,
-    `Lớp ${createGrade}A2`,
-    `Lớp ${createGrade}A3`,
-    `Lớp ${createGrade}A4`,
-  ];
+  // Danh sách các lớp của khối
+  const availableClassesForGrade = useMemo<string[]>(() => {
+    try {
+      const saved = localStorage.getItem('geo_classes_list');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const filtered = parsed.filter((c: any) => Number(c.grade) === Number(createGrade)).map((c: any) => c.name);
+          if (filtered.length > 0) return filtered;
+        }
+      }
+    } catch (e) {}
+    return [
+      `Lớp ${createGrade}A1`,
+      `Lớp ${createGrade}A2`,
+      `Lớp ${createGrade}A3`,
+      `Lớp ${createGrade}A4`,
+    ];
+  }, [createGrade]);
 
   // Xử lý chọn/bỏ chọn lớp
   const toggleClassSelection = (cls: string) => {
