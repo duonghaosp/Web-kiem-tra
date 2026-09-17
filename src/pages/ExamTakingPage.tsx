@@ -337,6 +337,25 @@ export const ExamTakingPage: React.FC = () => {
     const essayQ = questions.find((q) => q.type === 'essay');
     const essayAnswer = essayQ ? answers[essayQ.id] : null;
 
+    // Kiểm tra nộp muộn (so sánh với hạn chót deadline của đề thi)
+    let isLate = false;
+    let lateMinutes = 0;
+    if (currentAssignment?.deadline) {
+      try {
+        const deadlineTime = new Date(currentAssignment.deadline).getTime();
+        const nowTime = Date.now();
+        if (!isNaN(deadlineTime) && nowTime > deadlineTime) {
+          isLate = true;
+          lateMinutes = Math.max(1, Math.round((nowTime - deadlineTime) / 60000));
+        }
+      } catch (e) {
+        console.warn('Lỗi kiểm tra deadline:', e);
+      }
+    }
+
+    const now = new Date();
+    const formattedSubmitTime = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')} ${now.getDate().toString().padStart(2, '0')}/${(now.getMonth() + 1).toString().padStart(2, '0')}/${now.getFullYear()}`;
+
     const submissionData = {
       id: resultId,
       assignment_id: id || 'asg_1',
@@ -355,10 +374,11 @@ export const ExamTakingPage: React.FC = () => {
       answers_json: answers,
       detailed_scores_json: gradeResult.detailedResults,
       questions: questions,
-      is_late: false,
+      is_late: isLate,
+      late_minutes: lateMinutes,
       time_spent_seconds: timeSpent,
       status: gradeResult.hasEssay ? 'waiting_teacher_grading' : 'graded',
-      submitted_at: 'Vừa xong',
+      submitted_at: formattedSubmitTime,
       teacher_feedback_text: '',
     };
 

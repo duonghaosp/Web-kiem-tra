@@ -20,6 +20,7 @@ import {
   CheckCircle2,
   Smile,
   Globe,
+  RotateCw,
 } from 'lucide-react';
 import { GrantXpModal } from '../components/gamification/GrantXpModal';
 import { Profile, ClassItem } from '../types/database';
@@ -176,6 +177,42 @@ export const TeacherDashboardPage: React.FC = () => {
     };
   }, []);
 
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState<string>('Vừa xong');
+
+  const handleManualRefresh = async () => {
+    setIsSyncing(true);
+    try {
+      const [cloudSubs, cloudAsgs, cloudStudents, cloudClasses] = await Promise.all([
+        fetchStudentSubmissionsFromCloud(),
+        fetchAssignmentsFromCloud(),
+        fetchStudentsFromCloud(),
+        fetchClassesFromCloud(),
+      ]);
+      if (cloudStudents && cloudStudents.length > 0) {
+        setStudents(cloudStudents);
+      }
+      if (cloudClasses && cloudClasses.length > 0) {
+        setClassesList(cloudClasses);
+      }
+      if (cloudSubs && Array.isArray(cloudSubs)) {
+        setSubmissions(cloudSubs.filter((s: any) => !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(s.assignment_id)));
+      }
+      if (cloudAsgs && Array.isArray(cloudAsgs)) {
+        const valid = cloudAsgs.filter((a: any) => !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(a.id));
+        setAssignmentsCount(valid.length);
+      }
+      const now = new Date();
+      setLastSyncedTime(
+        `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
+      );
+    } catch (err) {
+      console.warn('Lỗi làm mới:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   // Lọc các bài nộp thực tế đang chờ cô nhận xét / chấm điểm
   const pendingSubmissions = useMemo(() => {
     return submissions.filter(
@@ -302,6 +339,17 @@ export const TeacherDashboardPage: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-3 relative z-10">
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={isSyncing}
+            className="flex items-center gap-2 px-4 py-3 rounded-2xl bg-white/10 hover:bg-white/20 active:scale-95 text-white font-bold text-xs sm:text-sm backdrop-blur-xs border border-white/20 transition cursor-pointer disabled:opacity-60"
+            title="Bấm để cập nhật tức thì dữ liệu bài nộp mới nhất từ học sinh"
+          >
+            <RotateCw className={`w-4 h-4 text-[#F5C76D] ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Đang đồng bộ...' : 'Làm Mới'}</span>
+            <span className="text-[10px] text-[#F0D59D] font-normal hidden sm:inline">({lastSyncedTime})</span>
+          </button>
           <Link
             to="/assignments"
             className="flex items-center gap-2 px-5 py-3 rounded-2xl bg-[#C9942C] hover:bg-[#B58022] active:scale-95 text-white font-black text-xs sm:text-sm shadow-md transition cursor-pointer"
@@ -349,49 +397,46 @@ export const TeacherDashboardPage: React.FC = () => {
           </div>
           <div className="min-w-0">
             <div className="text-2xl font-black text-[#1E2D2B]">{stats.totalExams}</div>
-            <div className="text-[11px] text-slate-600 font-bold truncate">Đợt Giao Bài / Đề Thi</div>
+            <div className="text-[11px] text-slate-600 font-bold truncate">Đề Thi Đã Giao</div>
           </div>
         </div>
 
         <div className="bg-white p-4 sm:p-5 rounded-3xl border border-[#CFDCD9] shadow-xs flex items-center gap-3.5 hover:shadow-md transition">
-          <div
-            className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 border ${
-              stats.pendingGrading > 0 ? 'bg-[#FAF6EE] border-[#ECD9B5]' : 'bg-[#EEF4F2] border-[#D5E2DF]'
-            }`}
-          >
-            {stats.pendingGrading > 0 ? (
-              <GeoWeatherSticker className="w-7 h-7" />
-            ) : (
-              <CheckCircle2 className="w-7 h-7 text-[#2D4441]" />
-            )}
+          <div className="w-12 h-12 rounded-2xl bg-[#FDF4F4] flex items-center justify-center shrink-0 border border-[#F6DADA]">
+            <GeoWeatherSticker className="w-7 h-7" />
           </div>
           <div className="min-w-0">
-            <div className="text-2xl font-black text-[#1E2D2B]">{stats.pendingGrading}</div>
-            <div className="text-[11px] text-slate-600 font-bold truncate">
-              {stats.pendingGrading > 0 ? 'Bài Chờ Nhận Xét' : 'Đã Chấm Hoàn Tất'}
-            </div>
+            <div className="text-2xl font-black text-rose-700">{stats.pendingGrading}</div>
+            <div className="text-[11px] text-slate-600 font-bold truncate">Bài Chờ Nhận Xét</div>
           </div>
         </div>
       </div>
 
-      {/* Danh sách bài nộp gần đây cần chấm */}
+      {/* 2 Cột: Danh sách bài nộp chờ chấm (Trái) & Báo cáo nhanh / Thao tác (Phải) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Cột Trái: Danh sách bài nộp thực tế chờ cô nhận xét */}
         <div className="lg:col-span-2 bg-white rounded-3xl p-5 sm:p-6 border border-slate-200 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="font-bold text-slate-900 text-base flex items-center gap-2">
-                <span>Hàng Đợi Chấm Bài & Ghi Lời Phê Nhận Xét</span>
-                {pendingSubmissions.length > 0 && (
-                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping"></span>
-                )}
-              </h3>
-              <p className="text-xs text-slate-500">Các bài nộp thực tế của học sinh đang chờ cô phê duyệt</p>
+          <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-2xl bg-[#EEF4F2] text-[#2D4441] flex items-center justify-center font-bold">
+                <FileText className="w-5 h-5 text-[#2D4441]" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-sm sm:text-base">
+                  Bài Kiểm Tra Chờ Nhận Xét & Chấm Điểm
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Dữ liệu thực tế từ các bài nộp của học sinh ({pendingSubmissions.length} bài)
+                </p>
+              </div>
             </div>
+
             <Link
               to="/grading"
-              className="text-xs font-bold text-ocean-600 hover:text-ocean-700 flex items-center gap-1 cursor-pointer"
+              className="text-xs font-bold text-[#C9942C] hover:text-[#B58022] hover:underline flex items-center gap-1 cursor-pointer"
             >
-              Xem trang chấm bài <ArrowRight className="w-3.5 h-3.5" />
+              <span>Xem tất cả</span>
+              <ArrowRight className="w-3.5 h-3.5" />
             </Link>
           </div>
 
@@ -421,11 +466,17 @@ export const TeacherDashboardPage: React.FC = () => {
                   className="p-4 rounded-2xl border border-[#D0DEDC] hover:border-[#C9942C] hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white"
                 >
                   <div className="space-y-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-slate-900 text-sm">{sub.student_name}</span>
                       <span className="text-[11px] font-bold text-slate-500 bg-slate-200/70 px-2 py-0.2 rounded-md">
                         {sub.class_name}
                       </span>
+                      {sub.is_late && (
+                        <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded flex items-center gap-0.5">
+                          <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                          Nộp muộn
+                        </span>
+                      )}
                       <span className="text-[10px] font-mono text-slate-400">
                         {sub.student_code}
                       </span>

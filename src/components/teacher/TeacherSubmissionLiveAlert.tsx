@@ -114,11 +114,15 @@ export const TeacherSubmissionLiveAlert: React.FC = () => {
         <div className="flex items-center justify-between gap-2 pb-2 border-b border-emerald-100">
           <div className="flex items-center gap-2">
             <span className="relative flex h-3 w-3">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+              <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${currentAlert.is_late ? 'bg-rose-400' : 'bg-emerald-400'}`}></span>
+              <span className={`relative inline-flex rounded-full h-3 w-3 ${currentAlert.is_late ? 'bg-rose-500' : 'bg-emerald-500'}`}></span>
             </span>
-            <span className="text-[11px] font-black uppercase tracking-wider text-emerald-800 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200">
-              🔔 Học sinh vừa nộp bài
+            <span className={`text-[11px] font-black uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+              currentAlert.is_late
+                ? 'text-rose-800 bg-rose-50 border-rose-200'
+                : 'text-emerald-800 bg-emerald-50 border-emerald-200'
+            }`}>
+              {currentAlert.is_late ? '⚠️ Học sinh nộp muộn' : '🔔 Học sinh vừa nộp bài'}
             </span>
           </div>
 
@@ -147,16 +151,25 @@ export const TeacherSubmissionLiveAlert: React.FC = () => {
 
         {/* Nội dung bài nộp */}
         <div className="flex items-start gap-3">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-600/30">
+          <div className={`w-11 h-11 rounded-2xl text-white flex items-center justify-center shrink-0 shadow-md ${
+            currentAlert.is_late
+              ? 'bg-gradient-to-tr from-rose-600 to-amber-500 shadow-rose-600/30'
+              : 'bg-gradient-to-tr from-emerald-600 to-teal-500 shadow-emerald-600/30'
+          }`}>
             <BellRing className="w-5 h-5 animate-bounce" />
           </div>
 
           <div className="flex-1 min-w-0">
-            <h4 className="text-sm font-black text-slate-900 truncate">
-              {currentAlert.student_name || 'Học sinh'}
+            <h4 className="text-sm font-black text-slate-900 truncate flex items-center gap-1.5">
+              <span>{currentAlert.student_name || 'Học sinh'}</span>
               {currentAlert.class_name && (
-                <span className="text-xs font-bold text-slate-500 ml-1.5">
+                <span className="text-xs font-bold text-slate-500">
                   ({currentAlert.class_name})
+                </span>
+              )}
+              {currentAlert.is_late && (
+                <span className="text-[10px] font-black text-rose-700 bg-rose-50 border border-rose-200 px-1.5 py-0.2 rounded">
+                  Trễ {currentAlert.late_minutes ? `${currentAlert.late_minutes}p` : ''}
                 </span>
               )}
             </h4>

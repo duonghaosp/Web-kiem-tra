@@ -28,10 +28,12 @@ import {
   Trash2,
   Eraser,
   RotateCcw,
+  RotateCw,
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import { StudentResult, Question } from '../types/database';
+import { StudentResult, Question, ClassItem } from '../types/database';
+import { INITIAL_CLASSES } from '../data/studentsData';
 import { LatexRenderer } from '../components/common/LatexRenderer';
 import { triggerCelebration } from '../lib/gamification';
 import { BadgeList } from '../components/common/BadgeList';
@@ -236,6 +238,17 @@ export const ExamGradingPage: React.FC = () => {
 
   const [selectedSubmission, setSelectedSubmission] = useState<any | null>(null);
   const [soundActive, setSoundActive] = useState<boolean>(() => isSoundEnabled());
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState<string>('Vừa xong');
+
+  // Danh sách lớp học thực tế để hỗ trợ lọc theo khối & lớp
+  const [classesList] = useState<ClassItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('geo_classes_list');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return INITIAL_CLASSES;
+  });
 
   // Tab phân loại: 'pending' (Mặc định - Chỉ hiện bài chưa nhận xét), 'graded' (Đã nhận xét xong), 'all' (Tất cả)
   const [activeTab, setActiveTab] = useState<'pending' | 'graded' | 'all'>('pending');
@@ -244,25 +257,76 @@ export const ExamGradingPage: React.FC = () => {
   const [assignmentFilter, setAssignmentFilter] = useState<string>(() => {
     return searchParams.get('assignmentId') || 'all';
   });
+  const [gradeFilter, setGradeFilter] = useState<number | 'all'>('all');
   const [classFilter, setClassFilter] = useState<string>('all');
-  const [scoreFilter, setScoreFilter] = useState<string>('all'); // Bộ lọc học lực (Gợi ý 3)
+  const [scoreFilter, setScoreFilter] = useState<string>('all'); // Bộ lọc học lực
+  const [lateFilter, setLateFilter] = useState<'all' | 'late_only' | 'on_time_only'>('all'); // Bộ lọc nộp đúng hạn / nộp muộn
   const [testTypeFilter, setTestTypeFilter] = useState<'all' | 'real_only' | 'test_only'>('all'); // Lọc bài thi thật vs bài thi thử
   const [searchTerm, setSearchTerm] = useState<string>('');
 
-  // Danh sách bài nộp theo bài kiểm tra / lớp đang chọn
+  // Danh sách các lớp khả dụng theo Khối đang chọn
+  const availableClasses = useMemo(() => {
+    if (gradeFilter === 'all') return classesList;
+    return classesList.filter((c) => c.grade === Number(gradeFilter));
+  }, [classesList, gradeFilter]);
+
+  // Xử lý khi chọn đổi Khối -> Reset lại bộ lọc lớp
+  const handleGradeChange = (newGrade: number | 'all') => {
+    setGradeFilter(newGrade);
+    setClassFilter('all');
+  };
+
+  // Nút Làm Mới Dữ Liệu 1-Click (Đồng bộ tức thì từ Supabase Cloud)
+  const handleManualRefresh = async () => {
+    setIsSyncing(true);
+    try {
+      const [cloudSubs, cloudAsgs] = await Promise.all([
+        fetchStudentSubmissionsFromCloud(),
+        fetchAssignmentsFromCloud(),
+      ]);
+      if (cloudSubs && Array.isArray(cloudSubs)) {
+        setSubmissions(
+          cloudSubs.filter((s: any) => !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(s.assignment_id))
+        );
+      }
+      if (cloudAsgs && Array.isArray(cloudAsgs)) {
+        setAssignmentsList(
+          cloudAsgs.filter((a: any) => !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(a.id))
+        );
+      }
+      const now = new Date();
+      setLastSyncedTime(
+        `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
+      );
+    } catch (err) {
+      console.warn('Lỗi làm mới dữ liệu:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  // Danh sách bài nộp theo bài kiểm tra / khối / lớp đang chọn
   const scopedSubmissions = useMemo(() => {
     return submissions.filter((sub) => {
       // 1. Lọc theo Đợt giao bài
       if (assignmentFilter !== 'all' && sub.assignment_id && sub.assignment_id !== assignmentFilter) {
         return false;
       }
-      // 2. Lọc theo Lớp
+      // 2. Lọc theo Khối
+      if (gradeFilter !== 'all') {
+        const asg = assignmentsList.find((a) => a.id === sub.assignment_id);
+        const gradeMatch = sub.class_name ? sub.class_name.match(/\d+/) : null;
+        const gradeNum = gradeMatch ? parseInt(gradeMatch[0].charAt(0)) : null;
+        const targetGrade = asg?.grade || gradeNum;
+        if (targetGrade !== gradeFilter) return false;
+      }
+      // 3. Lọc theo Lớp
       if (classFilter !== 'all' && sub.class_name !== classFilter) {
         return false;
       }
       return true;
     });
-  }, [submissions, assignmentFilter, classFilter]);
+  }, [submissions, assignmentFilter, gradeFilter, classFilter, assignmentsList]);
 
   // Đếm tổng số bài thi thử của học sinh mẫu theo bộ lọc đang xem
   const testSubmissionsCount = useMemo(() => {
@@ -566,7 +630,7 @@ export const ExamGradingPage: React.FC = () => {
     }
   };
 
-  // Lọc bài nộp theo Tab, đợt giao bài, lớp, học lực, loại bài (thật/thử), từ khóa
+  // Lọc bài nộp theo Tab, đợt giao bài, khối, lớp, học lực, nộp muộn, loại bài (thật/thử), từ khóa
   const filteredSubmissions = useMemo(() => {
     return submissions.filter((sub) => {
       // 1. Lọc theo Tab chính
@@ -578,20 +642,33 @@ export const ExamGradingPage: React.FC = () => {
         return false;
       }
 
-      // 3. Lọc theo Lớp
+      // 3. Lọc theo Khối
+      if (gradeFilter !== 'all') {
+        const asg = assignmentsList.find((a) => a.id === sub.assignment_id);
+        const gradeMatch = sub.class_name ? sub.class_name.match(/\d+/) : null;
+        const gradeNum = gradeMatch ? parseInt(gradeMatch[0].charAt(0)) : null;
+        const targetGrade = asg?.grade || gradeNum;
+        if (targetGrade !== gradeFilter) return false;
+      }
+
+      // 4. Lọc theo Lớp
       if (classFilter !== 'all' && sub.class_name !== classFilter) return false;
 
-      // 4. Lọc theo Học Lực (Gợi ý 3)
+      // 5. Lọc theo Trạng thái Nộp muộn / Đúng hạn
+      if (lateFilter === 'late_only' && !sub.is_late) return false;
+      if (lateFilter === 'on_time_only' && sub.is_late) return false;
+
+      // 6. Lọc theo Học Lực
       if (scoreFilter !== 'all') {
         const perf = getPerformanceCategory(sub.score, sub.max_score || 10);
         if (perf.categoryKey !== scoreFilter) return false;
       }
 
-      // 5. Lọc theo Bài thi thật vs Bài thi thử
+      // 7. Lọc theo Bài thi thật vs Bài thi thử
       if (testTypeFilter === 'real_only' && isTestSubmission(sub)) return false;
       if (testTypeFilter === 'test_only' && !isTestSubmission(sub)) return false;
 
-      // 6. Lọc theo Từ khóa tìm kiếm
+      // 8. Lọc theo Từ khóa tìm kiếm
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase();
         const matchName = sub.student_name?.toLowerCase().includes(term);
@@ -602,7 +679,7 @@ export const ExamGradingPage: React.FC = () => {
 
       return true;
     });
-  }, [submissions, activeTab, assignmentFilter, classFilter, scoreFilter, testTypeFilter, searchTerm]);
+  }, [submissions, activeTab, assignmentFilter, gradeFilter, classFilter, lateFilter, scoreFilter, testTypeFilter, searchTerm, assignmentsList]);
 
   return (
     <div className="space-y-6 animate-in fade-in duration-300 pb-16">
@@ -619,6 +696,19 @@ export const ExamGradingPage: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
+          {/* Nút Làm Mới Dữ Liệu 1-Click (Gợi ý 2) */}
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={isSyncing}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-2xl bg-ocean-50 hover:bg-ocean-100 border border-ocean-200 text-ocean-800 text-xs font-bold transition cursor-pointer active:scale-95 disabled:opacity-60 shadow-2xs"
+            title="Bấm để đồng bộ và cập nhật ngay bài nộp mới nhất từ máy chủ đám mây"
+          >
+            <RotateCw className={`w-3.5 h-3.5 text-ocean-600 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Đang đồng bộ...' : 'Làm Mới Dữ Liệu'}</span>
+            <span className="text-[10px] text-ocean-600 font-normal hidden sm:inline">({lastSyncedTime})</span>
+          </button>
+
           {pendingCount > 0 && (
             <div className="px-3.5 py-1.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-black flex items-center gap-2">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
@@ -762,7 +852,7 @@ export const ExamGradingPage: React.FC = () => {
         </button>
       </div>
 
-      {/* 3. BỘ LỌC TÌM KIẾM & PHÂN LOẠI HỌC LỰC */}
+      {/* 3. BỘ LỌC TÌM KIẾM THEO KHỐI, LỚP, HỌC LỰC, HẠN NỘP (GỢI Ý 4) */}
       <div className="flex flex-col sm:flex-row items-center gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
         {/* Lọc theo đợt giao bài */}
         <select
@@ -778,22 +868,42 @@ export const ExamGradingPage: React.FC = () => {
           ))}
         </select>
 
-        {/* Lọc theo Lớp */}
+        {/* Lọc theo Khối (Gợi ý 4) */}
+        <select
+          value={gradeFilter}
+          onChange={(e) => handleGradeChange(e.target.value === 'all' ? 'all' : Number(e.target.value))}
+          className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-ocean-500 cursor-pointer"
+        >
+          <option value="all">🏫 Tất cả các Khối</option>
+          <option value="6">Khối 6</option>
+          <option value="7">Khối 7</option>
+          <option value="8">Khối 8</option>
+          <option value="9">Khối 9</option>
+        </select>
+
+        {/* Lọc theo Lớp (Gợi ý 4) */}
         <select
           value={classFilter}
           onChange={(e) => setClassFilter(e.target.value)}
           className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-ocean-500 cursor-pointer"
         >
-          <option value="all">Tất cả các Lớp</option>
-          <option value="Lớp 6A1">Lớp 6A1</option>
-          <option value="Lớp 6A2">Lớp 6A2</option>
-          <option value="Lớp 6A3">Lớp 6A3</option>
-          <option value="Lớp 6A4">Lớp 6A4</option>
-          <option value="Lớp 7A1">Lớp 7A1</option>
-          <option value="Lớp 7A2">Lớp 7A2</option>
-          <option value="Lớp 8A1">Lớp 8A1</option>
-          <option value="Lớp 9A1">Lớp 9A1</option>
-          <option value="Lớp 9A4">Lớp 9A4</option>
+          <option value="all">Tất cả các Lớp ({availableClasses.length})</option>
+          {availableClasses.map((c) => (
+            <option key={c.id || c.name} value={c.name}>
+              {c.name}
+            </option>
+          ))}
+        </select>
+
+        {/* Lọc theo Trạng thái Nộp bài (Đúng hạn vs Nộp muộn - Gợi ý 3) */}
+        <select
+          value={lateFilter}
+          onChange={(e) => setLateFilter(e.target.value as any)}
+          className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-ocean-500 cursor-pointer"
+        >
+          <option value="all">⏱️ Mọi thời gian nộp</option>
+          <option value="on_time_only">✓ Đúng hạn quy định</option>
+          <option value="late_only">⚠️ Nộp muộn (quá hạn)</option>
         </select>
 
         {/* Bộ lọc phân loại theo mức điểm học lực */}
@@ -809,7 +919,7 @@ export const ExamGradingPage: React.FC = () => {
           <option value="poor">❗ Cần Cố Gắng (&lt; 5.0đ)</option>
         </select>
 
-        {/* Bộ lọc phân loại bài thi thật vs bài thi thử (Gợi ý 3) */}
+        {/* Bộ lọc phân loại bài thi thật vs bài thi thử */}
         <select
           value={testTypeFilter}
           onChange={(e) => setTestTypeFilter(e.target.value as any)}
@@ -960,13 +1070,30 @@ export const ExamGradingPage: React.FC = () => {
                       <td className="py-3.5 px-3">
                         <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
                           <span>{sub.student_name}</span>
+                          {sub.is_late && (
+                            <span
+                              className="px-2 py-0.5 rounded-md text-[9.5px] font-black bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1"
+                              title={`Học sinh nộp bài sau thời hạn quy định ${sub.late_minutes ? `(${sub.late_minutes} phút)` : ''}`}
+                            >
+                              <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                              Nộp muộn
+                            </span>
+                          )}
                           {isTestSubmission(sub) && (
                             <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300">
                               🧪 Thi Thử
                             </span>
                           )}
                         </div>
-                        <div className="text-[10px] text-slate-400 font-mono">{sub.student_code}</div>
+                        <div className="text-[10.5px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
+                          <span>{sub.student_code}</span>
+                          {sub.submitted_at && (
+                            <>
+                              <span className="text-slate-300">•</span>
+                              <span className="text-slate-500 font-sans">{sub.submitted_at}</span>
+                            </>
+                          )}
+                        </div>
                       </td>
                       <td className="py-3.5 px-3 font-semibold text-slate-700">
                         {sub.class_name}

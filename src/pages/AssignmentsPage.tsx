@@ -29,6 +29,7 @@ import {
   Layers,
   PieChart,
   RotateCcw,
+  RotateCw,
   QrCode,
   Eye,
   PauseCircle,
@@ -189,6 +190,33 @@ export const AssignmentsPage: React.FC = () => {
       window.removeEventListener('storage', handleSubmissionsUpdated);
     };
   }, []);
+
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [lastSyncedTime, setLastSyncedTime] = useState<string>('Vừa xong');
+
+  const handleManualRefresh = async () => {
+    setIsSyncing(true);
+    try {
+      const [cloudAsgs, cloudSubs] = await Promise.all([
+        fetchAssignmentsFromCloud(),
+        fetchStudentSubmissionsFromCloud(),
+      ]);
+      if (cloudAsgs && cloudAsgs.length > 0) {
+        setAssignments(cloudAsgs);
+      }
+      if (cloudSubs && cloudSubs.length > 0) {
+        setStudentSubmissions(cloudSubs);
+      }
+      const now = new Date();
+      setLastSyncedTime(
+        `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
+      );
+    } catch (err) {
+      console.warn('Lỗi làm mới:', err);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [qrModalAssignment, setQrModalAssignment] = useState<Assignment | null>(null);
@@ -799,6 +827,19 @@ export const AssignmentsPage: React.FC = () => {
               <span>Đã kết nối Đám mây</span>
             </div>
           </div>
+
+          {/* Nút Làm Mới Dữ Liệu 1-Click (Gợi ý 2) */}
+          <button
+            type="button"
+            onClick={handleManualRefresh}
+            disabled={isSyncing}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-ocean-50 hover:bg-ocean-100 border border-ocean-200 text-ocean-800 text-xs sm:text-sm font-bold transition cursor-pointer active:scale-95 disabled:opacity-60 shadow-xs"
+            title="Bấm để đồng bộ và cập nhật ngay bài nộp mới nhất từ máy chủ đám mây"
+          >
+            <RotateCw className={`w-4 h-4 text-ocean-600 ${isSyncing ? 'animate-spin' : ''}`} />
+            <span>{isSyncing ? 'Đang đồng bộ...' : 'Làm Mới Dữ Liệu'}</span>
+            <span className="text-[10px] text-ocean-600 font-normal hidden sm:inline">({lastSyncedTime})</span>
+          </button>
 
           {/* Nút mở Thư viện đề mẫu chuẩn */}
           <button
