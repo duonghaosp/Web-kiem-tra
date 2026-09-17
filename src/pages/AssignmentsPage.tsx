@@ -54,7 +54,7 @@ import { AssignmentPreviewModal } from '../components/assignments/AssignmentPrev
 import { DeleteAssignmentWarningModal } from '../components/assignments/DeleteAssignmentWarningModal';
 import { AssignmentTrashModal } from '../components/assignments/AssignmentTrashModal';
 import { EditAssignmentQuestionsModal } from '../components/assignments/EditAssignmentQuestionsModal';
-import { saveAssignmentsToCloud, fetchAssignmentsFromCloud } from '../lib/assignmentCloudSync';
+import { saveAssignmentsToCloud, fetchAssignmentsFromCloud, fetchStudentSubmissionsFromCloud } from '../lib/assignmentCloudSync';
 import { playSubmissionNotificationSound, isSoundEnabled, toggleSoundEnabled } from '../utils/soundEffects';
 
 // Các hình thức đánh giá kiểm tra chuẩn theo Bộ Giáo dục & Đào tạo
@@ -150,15 +150,44 @@ export const AssignmentsPage: React.FC = () => {
     saveAssignmentsToCloud(newAsgs);
   };
 
-  // Tự động đồng bộ đề thi với Supabase Cloud khi vào trang
+  // Danh sách bài nộp của học sinh để hiển thị số lượng nộp bài theo thời gian thực
+  const [studentSubmissions, setStudentSubmissions] = useState<any[]>(() => {
+    try {
+      const saved = localStorage.getItem('geo_student_submissions');
+      if (saved) return JSON.parse(saved);
+    } catch (e) {}
+    return [];
+  });
+
+  // Tự động đồng bộ đề thi và bài nộp với Supabase Cloud khi vào trang
   useEffect(() => {
     async function syncAssignmentsWithCloud() {
-      const cloudAsgs = await fetchAssignmentsFromCloud();
+      const [cloudAsgs, cloudSubs] = await Promise.all([
+        fetchAssignmentsFromCloud(),
+        fetchStudentSubmissionsFromCloud(),
+      ]);
       if (cloudAsgs && cloudAsgs.length > 0) {
         setAssignments(cloudAsgs);
       }
+      if (cloudSubs && cloudSubs.length > 0) {
+        setStudentSubmissions(cloudSubs);
+      }
     }
     syncAssignmentsWithCloud();
+
+    const handleSubmissionsUpdated = () => {
+      try {
+        const saved = localStorage.getItem('geo_student_submissions');
+        if (saved) setStudentSubmissions(JSON.parse(saved));
+      } catch (e) {}
+    };
+
+    window.addEventListener('geo_student_submissions_updated', handleSubmissionsUpdated);
+    window.addEventListener('storage', handleSubmissionsUpdated);
+    return () => {
+      window.removeEventListener('geo_student_submissions_updated', handleSubmissionsUpdated);
+      window.removeEventListener('storage', handleSubmissionsUpdated);
+    };
   }, []);
 
   const [copiedId, setCopiedId] = useState<string | null>(null);
@@ -863,8 +892,13 @@ export const AssignmentsPage: React.FC = () => {
           </div>
         ) : (
           assignments.map((asg) => {
-            const submissionPercent = Math.round(
-              ((asg.submissions_count || 0) / (asg.total_students || 1)) * 100
+            const actualSubmissionsCount = studentSubmissions.filter(
+              (s: any) => s.assignment_id === asg.id
+            ).length || asg.submissions_count || 0;
+
+            const submissionPercent = Math.min(
+              100,
+              Math.round((actualSubmissionsCount / (asg.total_students || 1)) * 100)
             );
 
             return (
@@ -935,7 +969,7 @@ export const AssignmentsPage: React.FC = () => {
                       <span>
                         Đã nộp:{' '}
                         <strong className="text-ocean-700 font-bold">
-                          {asg.submissions_count}/{asg.total_students}
+                          {actualSubmissionsCount}/{asg.total_students}
                         </strong>{' '}
                         học sinh ({submissionPercent}%)
                       </span>

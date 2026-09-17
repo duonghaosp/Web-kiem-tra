@@ -299,8 +299,20 @@ export const ExamTakingPage: React.FC = () => {
     setExamStudent(student);
   };
 
+  const [isSubmitModalOpen, setIsSubmitModalOpen] = useState(false);
+
+  const answeredCount = useMemo(() => {
+    return Object.keys(answers).filter(
+      (k) => answers[k] !== undefined && answers[k] !== '' && answers[k] !== null
+    ).length;
+  }, [answers]);
+
+  const unansweredCount = useMemo(() => {
+    return Math.max(0, questions.length - answeredCount);
+  }, [questions.length, answeredCount]);
+
   const handleAutoSubmit = () => {
-    alert('⏰ ĐÃ HẾT THỜI GIAN LÀM BÀI! Hệ thống đang tự động nộp bài của em...');
+    // Tự động nộp khi hết giờ mà không bắt học sinh bấm OK
     submitExam();
   };
 
@@ -314,6 +326,7 @@ export const ExamTakingPage: React.FC = () => {
   const submitExam = async () => {
     if (timerRef.current) clearInterval(timerRef.current);
     setIsSubmitting(true);
+    setIsSubmitModalOpen(false);
 
     // Chấm điểm tự động qua Grading Engine dựa trên điểm số thực tế của từng câu hỏi
     const gradeResult = gradeEntireExam(questions, answers);
@@ -359,12 +372,8 @@ export const ExamTakingPage: React.FC = () => {
     sessionStorage.removeItem('is_teacher_previewing');
     localStorage.removeItem('geo_thcs_auth_profile');
 
-    if (!gradeResult.hasEssay) {
-      triggerCelebration();
-      alert(`🎉 Chúc mừng em! Đề thi 100% trắc nghiệm đã có kết quả ngay:\n• Điểm số chính thức của em: ${gradeResult.totalScore} / 10.0 điểm.`);
-    } else {
-      alert(`🎉 Em đã nộp bài thành công!\n• Điểm phần trắc nghiệm tạm tính: ${gradeResult.objectiveScore} / 7.0 điểm.\n• Phần tự luận (3.0 điểm) đã được chuyển sang mục chờ Cô Hảo chấm điểm và nhận xét.`);
-    }
+    // Kích hoạt pháo hoa chúc mừng và chuyển thẳng sang trang xem điểm chi tiết
+    triggerCelebration();
 
     navigate(`/results/${id || 'asg_1'}`);
   };
@@ -907,13 +916,9 @@ export const ExamTakingPage: React.FC = () => {
 
           <button
             type="button"
-            onClick={() => {
-              if (confirm('Em có chắc chắn muốn NỘP BÀI ngay bây giờ không?')) {
-                submitExam();
-              }
-            }}
+            onClick={() => setIsSubmitModalOpen(true)}
             disabled={isSubmitting}
-            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-xs transition disabled:opacity-50"
+            className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-xs transition disabled:opacity-50 cursor-pointer"
           >
             <Send className="w-3.5 h-3.5" />
             Nộp Bài
@@ -996,7 +1001,7 @@ export const ExamTakingPage: React.FC = () => {
               type="button"
               disabled={currentQIndex === 0}
               onClick={() => setCurrentQIndex(currentQIndex - 1)}
-              className="flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:pointer-events-none transition"
+              className="flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-bold text-slate-600 bg-slate-100 hover:bg-slate-200 disabled:opacity-30 disabled:pointer-events-none transition cursor-pointer"
             >
               <ArrowLeft className="w-4 h-4" /> Câu trước
             </button>
@@ -1004,12 +1009,8 @@ export const ExamTakingPage: React.FC = () => {
             {isLastQuestion ? (
               <button
                 type="button"
-                onClick={() => {
-                  if (confirm('Em đã hoàn thành câu cuối cùng. Bấm OK để nộp bài!')) {
-                    submitExam();
-                  }
-                }}
-                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition active:scale-95"
+                onClick={() => setIsSubmitModalOpen(true)}
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-xs transition active:scale-95 cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4" /> Hoàn Thành & Nộp Bài
               </button>
@@ -1017,7 +1018,7 @@ export const ExamTakingPage: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setCurrentQIndex(currentQIndex + 1)}
-                className="flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-bold text-white bg-ocean-600 hover:bg-ocean-700 shadow-xs transition active:scale-95"
+                className="flex items-center gap-1 px-4 py-2 rounded-xl text-xs font-bold text-white bg-ocean-600 hover:bg-ocean-700 shadow-xs transition active:scale-95 cursor-pointer"
               >
                 Câu tiếp theo <ArrowRight className="w-4 h-4" />
               </button>
@@ -1039,7 +1040,7 @@ export const ExamTakingPage: React.FC = () => {
                   key={q.id}
                   type="button"
                   onClick={() => setCurrentQIndex(idx)}
-                  className={`w-10 h-10 rounded-xl font-bold text-xs flex items-center justify-center transition border ${
+                  className={`w-10 h-10 rounded-xl font-bold text-xs flex items-center justify-center transition border cursor-pointer ${
                     isCurrent
                       ? 'bg-ocean-600 text-white border-ocean-600 ring-2 ring-ocean-300'
                       : isAnswered
@@ -1056,15 +1057,76 @@ export const ExamTakingPage: React.FC = () => {
           <div className="space-y-1.5 pt-3 border-t border-slate-100 text-[11px] text-slate-500 font-medium">
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-emerald-500"></span>
-              <span>Đã trả lời ({Object.keys(answers).filter((k) => answers[k] !== undefined && answers[k] !== '').length}/{questions.length})</span>
+              <span>Đã trả lời ({answeredCount}/{questions.length})</span>
             </div>
             <div className="flex items-center gap-2">
               <span className="w-3 h-3 rounded-full bg-slate-200"></span>
-              <span>Chưa trả lời</span>
+              <span>Chưa trả lời ({unansweredCount})</span>
             </div>
           </div>
         </div>
       </div>
+
+      {/* MODAL XÁC NHẬN NỘP BÀI THI MƯỢT MÀ 1-CLICK (KHÔNG BẬT ALERT TRÌNH DUYỆT) */}
+      {isSubmitModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl p-6 sm:p-7 max-w-md w-full shadow-2xl border border-slate-100 space-y-5 animate-in zoom-in-95 duration-200">
+            <div className="text-center space-y-2">
+              <div className="w-14 h-14 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mx-auto shadow-inner border border-emerald-100">
+                <CheckCircle2 className="w-7 h-7" />
+              </div>
+              <h3 className="text-lg font-black text-slate-900">
+                Xác Nhận Nộp Bài Kiểm Tra
+              </h3>
+              <p className="text-xs text-slate-500">
+                Em hãy kiểm tra lại trạng thái bài làm trước khi nộp nhé!
+              </p>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2.5 text-xs">
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Thí sinh:</span>
+                <strong className="text-slate-900 font-bold">{examStudent?.full_name} ({examStudent?.class_name})</strong>
+              </div>
+              <div className="flex justify-between items-center text-slate-600">
+                <span>Đã hoàn thành:</span>
+                <strong className="text-emerald-700 font-bold">{answeredCount} / {questions.length} câu</strong>
+              </div>
+              {unansweredCount > 0 && (
+                <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>Em còn <strong>{unansweredCount} câu</strong> chưa chọn đáp án!</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsSubmitModalOpen(false)}
+                className="flex-1 py-3 px-4 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition active:scale-95 cursor-pointer"
+              >
+                Làm Tiếp / Xem Lại
+              </button>
+              <button
+                type="button"
+                onClick={submitExam}
+                disabled={isSubmitting}
+                className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-md transition active:scale-95 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {isSubmitting ? (
+                  <span>Đang nộp bài...</span>
+                ) : (
+                  <>
+                    <Send className="w-3.5 h-3.5" />
+                    <span>Nộp Bài Ngay</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

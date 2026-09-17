@@ -37,6 +37,7 @@ import {
 import { Leaderboard } from '../components/gamification/Leaderboard';
 import { Profile, ClassItem } from '../types/database';
 import { getStoredStudents, INITIAL_CLASSES } from '../data/studentsData';
+import { fetchStudentSubmissionsFromCloud, fetchAssignmentsFromCloud } from '../lib/assignmentCloudSync';
 
 export const AnalyticsReportPage: React.FC = () => {
   const [selectedGrade, setSelectedGrade] = useState<number | 'all'>('all');
@@ -84,8 +85,22 @@ export const AnalyticsReportPage: React.FC = () => {
     return [];
   });
 
-  // Lắng nghe sự kiện cập nhật dữ liệu
+  // Lắng nghe sự kiện cập nhật dữ liệu & đồng bộ Cloud
   useEffect(() => {
+    async function syncCloud() {
+      const [cloudSubs, cloudAsgs] = await Promise.all([
+        fetchStudentSubmissionsFromCloud(),
+        fetchAssignmentsFromCloud(),
+      ]);
+      if (cloudSubs && cloudSubs.length > 0) {
+        setSubmissions(cloudSubs);
+      }
+      if (cloudAsgs && cloudAsgs.length > 0) {
+        setAssignments(cloudAsgs);
+      }
+    }
+    syncCloud();
+
     const reload = () => {
       setStudents(getStoredStudents());
 
@@ -102,10 +117,12 @@ export const AnalyticsReportPage: React.FC = () => {
     window.addEventListener('storage', reload);
     window.addEventListener('geo_notifications_updated', reload);
     window.addEventListener('geo_assignments_updated', reload);
+    window.addEventListener('geo_student_submissions_updated', reload);
     return () => {
       window.removeEventListener('storage', reload);
       window.removeEventListener('geo_notifications_updated', reload);
       window.removeEventListener('geo_assignments_updated', reload);
+      window.removeEventListener('geo_student_submissions_updated', reload);
     };
   }, []);
 

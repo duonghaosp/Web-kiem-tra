@@ -24,6 +24,8 @@ import {
 import { GrantXpModal } from '../components/gamification/GrantXpModal';
 import { Profile, ClassItem } from '../types/database';
 import { getStoredStudents, INITIAL_CLASSES } from '../data/studentsData';
+import { fetchStudentSubmissionsFromCloud, fetchAssignmentsFromCloud } from '../lib/assignmentCloudSync';
+import { fetchStudentsFromCloud, fetchClassesFromCloud } from '../lib/studentCloudSync';
 import {
   GeoGlobeSticker,
   GeoMountainSticker,
@@ -95,8 +97,37 @@ export const TeacherDashboardPage: React.FC = () => {
     return 0;
   });
 
-  // Lắng nghe sự kiện cập nhật dữ liệu thời gian thực
+  // Tải dữ liệu mới nhất từ Supabase Cloud và lắng nghe sự kiện cập nhật dữ liệu thời gian thực
   useEffect(() => {
+    async function syncCloudData() {
+      try {
+        const [cloudSubs, cloudAsgs, cloudStudents, cloudClasses] = await Promise.all([
+          fetchStudentSubmissionsFromCloud(),
+          fetchAssignmentsFromCloud(),
+          fetchStudentsFromCloud(),
+          fetchClassesFromCloud(),
+        ]);
+
+        if (cloudStudents && cloudStudents.length > 0) {
+          setStudents(cloudStudents);
+        }
+        if (cloudClasses && cloudClasses.length > 0) {
+          setClassesList(cloudClasses);
+        }
+        if (cloudSubs && Array.isArray(cloudSubs)) {
+          setSubmissions(cloudSubs.filter((s: any) => !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(s.assignment_id)));
+        }
+        if (cloudAsgs && Array.isArray(cloudAsgs)) {
+          const valid = cloudAsgs.filter((a: any) => !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(a.id));
+          setAssignmentsCount(valid.length);
+        }
+      } catch (err) {
+        console.debug('Lỗi sync TeacherDashboard cloud:', err);
+      }
+    }
+
+    syncCloudData();
+
     const reloadData = () => {
       try {
         setStudents(getStoredStudents());
@@ -135,9 +166,13 @@ export const TeacherDashboardPage: React.FC = () => {
 
     window.addEventListener('storage', reloadData);
     window.addEventListener('geo_notifications_updated', reloadData);
+    window.addEventListener('geo_assignments_updated', reloadData);
+    window.addEventListener('geo_student_submissions_updated', reloadData);
     return () => {
       window.removeEventListener('storage', reloadData);
       window.removeEventListener('geo_notifications_updated', reloadData);
+      window.removeEventListener('geo_assignments_updated', reloadData);
+      window.removeEventListener('geo_student_submissions_updated', reloadData);
     };
   }, []);
 
