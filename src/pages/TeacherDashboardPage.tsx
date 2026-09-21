@@ -36,6 +36,7 @@ import {
   GeoSailboatSticker,
 } from '../components/common/GeoStickers';
 import { GeoRouteExplorerWidget } from '../components/dashboard/GeoRouteExplorerWidget';
+import { formatSubmissionDisplayTime } from '../utils/formatDate';
 
 export const TeacherDashboardPage: React.FC = () => {
   const { profile } = useAuth();
@@ -483,7 +484,7 @@ export const TeacherDashboardPage: React.FC = () => {
                     </div>
                     <div className="text-xs text-slate-600">{sub.assignment_title}</div>
                     <div className="text-[11px] text-slate-400 flex items-center gap-3">
-                      <span>Thời gian nộp: {sub.submitted_at || 'Vừa xong'}</span>
+                      <span>Thời gian nộp: {formatSubmissionDisplayTime(sub)}</span>
                       <span>
                         Điểm tạm tính: <strong className="text-slate-700">{sub.score}đ</strong>
                       </span>

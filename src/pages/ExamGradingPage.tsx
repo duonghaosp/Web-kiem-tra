@@ -31,7 +31,14 @@ import {
   RotateCw,
   Volume2,
   VolumeX,
+  Download,
+  LayoutGrid,
+  List,
+  FolderOpen,
+  BookOpen,
+  ChevronRight,
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { StudentResult, Question, ClassItem } from '../types/database';
 import { INITIAL_CLASSES } from '../data/studentsData';
 import { LatexRenderer } from '../components/common/LatexRenderer';
@@ -45,6 +52,7 @@ import {
   saveAssignmentsToCloud,
 } from '../lib/assignmentCloudSync';
 import { playSoftClick, playSubmissionNotificationSound, isSoundEnabled, toggleSoundEnabled } from '../utils/soundEffects';
+import { formatSubmissionDisplayTime } from '../utils/formatDate';
 
 // Danh sách bài nộp mẫu của học sinh (Rỗng ban đầu khi giáo viên chưa giao đề thi)
 const DEFAULT_SUBMISSIONS: any[] = [];
@@ -250,19 +258,130 @@ export const ExamGradingPage: React.FC = () => {
     return INITIAL_CLASSES;
   });
 
-  // Tab phân loại: 'pending' (Mặc định - Chỉ hiện bài chưa nhận xét), 'graded' (Đã nhận xét xong), 'all' (Tất cả)
+  // Chế độ xem: 'grouped' (Gom nhóm theo từng Đề thi - Mặc định) hoặc 'table' (Bảng danh sách tổng hợp)
+  const [viewMode, setViewMode] = useState<'grouped' | 'table'>('grouped');
+
+  // Tab phân loại trạng thái bài: 'pending' (Chờ nhận xét/chấm), 'graded' (Đã xong), 'all' (Tất cả)
   const [activeTab, setActiveTab] = useState<'pending' | 'graded' | 'all'>('pending');
 
-  // Bộ lọc
+  // Bộ lọc đợt giao bài / đề thi
   const [assignmentFilter, setAssignmentFilter] = useState<string>(() => {
-    return searchParams.get('assignmentId') || 'all';
+    const fromUrl = searchParams.get('assignmentId');
+    if (fromUrl) return fromUrl;
+    try {
+      const saved = localStorage.getItem('geo_last_grading_assignment');
+      if (saved) return saved;
+    } catch (e) {}
+    return 'all';
   });
+
   const [gradeFilter, setGradeFilter] = useState<number | 'all'>('all');
   const [classFilter, setClassFilter] = useState<string>('all');
   const [scoreFilter, setScoreFilter] = useState<string>('all'); // Bộ lọc học lực
   const [lateFilter, setLateFilter] = useState<'all' | 'late_only' | 'on_time_only'>('all'); // Bộ lọc nộp đúng hạn / nộp muộn
   const [testTypeFilter, setTestTypeFilter] = useState<'all' | 'real_only' | 'test_only'>('all'); // Lọc bài thi thật vs bài thi thử
   const [searchTerm, setSearchTerm] = useState<string>('');
+
+  // Danh sách các Đề thi thực tế có trong hệ thống hoặc có bài nộp
+  const availableAssignments = useMemo(() => {
+    const map = new Map<string, any>();
+
+    // 1. Thêm từ danh sách đề thi chính thức
+    assignmentsList.forEach((a) => {
+      if (a.id && !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(a.id)) {
+        map.set(a.id, {
+          id: a.id,
+          title: a.title,
+          grade: a.grade || 7,
+          target_ids: a.target_ids || [],
+          total_points: a.total_points || 10,
+          deadline: a.deadline,
+          created_at: a.created_at || a.start_time,
+        });
+      }
+    });
+
+    // 2. Thêm từ danh sách bài nộp thực tế nếu chưa có trong map
+    submissions.forEach((s) => {
+      if (s.assignment_id && !['asg_1', 'asg_2', 'asg_3', 'asg_4'].includes(s.assignment_id)) {
+        if (!map.has(s.assignment_id)) {
+          const gradeMatch = s.class_name ? s.class_name.match(/\d+/) : null;
+          const grade = gradeMatch ? parseInt(gradeMatch[0].charAt(0)) : 7;
+          map.set(s.assignment_id, {
+            id: s.assignment_id,
+            title: s.assignment_title || 'Bài kiểm tra Địa lí',
+            grade: grade,
+            target_ids: s.class_name ? [s.class_name] : [],
+            total_points: s.max_score || 10,
+            created_at: s.created_at,
+          });
+        }
+      }
+    });
+
+    // Tính toán số lượng bài nộp cho từng đề thi
+    const list = Array.from(map.values()).map((asg) => {
+      const asgSubs = submissions.filter((s) => s.assignment_id === asg.id);
+      const pending = asgSubs.filter((s) => isSubmissionPending(s)).length;
+      const graded = asgSubs.filter((s) => !isSubmissionPending(s)).length;
+      const late = asgSubs.filter((s) => s.is_late).length;
+      const avg = asgSubs.length > 0
+        ? (asgSubs.reduce((acc, s) => acc + (Number(s.score) || 0), 0) / asgSubs.length).toFixed(1)
+        : '0';
+
+      return {
+        ...asg,
+        submissions_count: asgSubs.length,
+        pending_count: pending,
+        graded_count: graded,
+        late_count: late,
+        avg_score: avg,
+      };
+    });
+
+    return list;
+  }, [assignmentsList, submissions]);
+
+  // Xử lý chọn đề thi và ghi nhớ lựa chọn
+  const handleSelectAssignment = (asgId: string) => {
+    setAssignmentFilter(asgId);
+    try {
+      localStorage.setItem('geo_last_grading_assignment', asgId);
+    } catch (e) {}
+  };
+
+  // Xuất file Excel danh sách điểm & nhận xét cho một đề thi cụ thể
+  const handleExportExcelForAssignment = (asgTitle: string, subsToExport: any[]) => {
+    if (subsToExport.length === 0) {
+      alert('Không có bài nộp nào trong đề thi này để xuất Excel.');
+      return;
+    }
+
+    const data = subsToExport.map((sub, index) => {
+      const perf = getPerformanceCategory(sub.score, sub.max_score || 10);
+      return {
+        'STT': index + 1,
+        'Mã Học Sinh': sub.student_code || '',
+        'Họ và Tên': sub.student_name || '',
+        'Lớp': sub.class_name || '',
+        'Tên Bài Kiểm Tra': sub.assignment_title || asgTitle || '',
+        'Điểm Trắc Nghiệm': sub.score_tn ?? sub.score ?? 0,
+        'Điểm Tự Luận': sub.score_tl ?? 0,
+        'Tổng Điểm': sub.score ?? 0,
+        'Xếp Loại Học Lực': perf.label,
+        'Trạng Thái Nộp': sub.is_late ? `Nộp muộn (${sub.late_minutes ? `${sub.late_minutes}p` : ''})` : 'Đúng hạn',
+        'Thời Gian Nộp': formatSubmissionDisplayTime(sub),
+        'Lời Nhận Xét Của Cô': sub.teacher_feedback_text || 'Chưa nhận xét',
+      };
+    });
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'BangDiem');
+    const cleanTitle = (asgTitle || 'BangDiem').replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1E00-\u1EFF]/g, '_');
+    const fileName = `BangDiem_${cleanTitle}_${new Date().toLocaleDateString('vi-VN').replace(/\//g, '-')}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+  };
 
   // Danh sách các lớp khả dụng theo Khối đang chọn
   const availableClasses = useMemo(() => {
@@ -681,6 +800,224 @@ export const ExamGradingPage: React.FC = () => {
     });
   }, [submissions, activeTab, assignmentFilter, gradeFilter, classFilter, lateFilter, scoreFilter, testTypeFilter, searchTerm, assignmentsList]);
 
+  // Danh sách các đề thi cần hiển thị theo bộ lọc đang chọn
+  const filteredAssignmentsToDisplay = useMemo(() => {
+    return availableAssignments.filter((asg) => {
+      // 1. Lọc theo đợt giao bài đang chọn
+      if (assignmentFilter !== 'all' && asg.id !== assignmentFilter) {
+        return false;
+      }
+      // 2. Lọc theo Khối
+      if (gradeFilter !== 'all' && asg.grade !== gradeFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [availableAssignments, assignmentFilter, gradeFilter]);
+
+  // Hàm render bảng danh sách bài nộp
+  const renderSubmissionTable = (subsList: any[], showAssignmentColumn: boolean = true) => {
+    if (subsList.length === 0) {
+      if (activeTab === 'pending') {
+        return (
+          <div className="py-12 text-center bg-white rounded-2xl border-2 border-dashed border-emerald-200 p-6">
+            <div className="w-12 h-12 mx-auto rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-2">
+              <CheckCircle2 className="w-7 h-7" />
+            </div>
+            <h4 className="font-black text-slate-800 text-sm">
+              🎉 Đã hoàn tất nhận xét cho toàn bộ học sinh trong mục này!
+            </h4>
+            <p className="text-xs text-slate-500 mt-0.5 max-w-md mx-auto">
+              Không còn bài làm nào đang chờ chấm. Học sinh đã nhận được điểm số và lời nhận xét đầy đủ.
+            </p>
+          </div>
+        );
+      }
+      return (
+        <div className="py-10 text-center text-slate-400 italic text-xs bg-slate-50/60 rounded-2xl border border-slate-200">
+          Không tìm thấy bài nộp nào phù hợp với các tiêu chí lọc đang chọn.
+        </div>
+      );
+    }
+
+    const isAllSelectedInList =
+      subsList.length > 0 && subsList.every((s) => selectedIds.includes(s.id));
+
+    const toggleSelectAllInList = () => {
+      if (isAllSelectedInList) {
+        const listIds = subsList.map((s) => s.id);
+        setSelectedIds((prev) => prev.filter((id) => !listIds.includes(id)));
+      } else {
+        const listIds = subsList.map((s) => s.id);
+        setSelectedIds((prev) => Array.from(new Set([...prev, ...listIds])));
+      }
+    };
+
+    return (
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-xs">
+          <thead className="bg-slate-50 text-slate-600 font-black uppercase tracking-wider border-b border-slate-200">
+            <tr>
+              <th className="py-3 px-3 w-10 text-center">
+                <input
+                  type="checkbox"
+                  checked={isAllSelectedInList}
+                  onChange={toggleSelectAllInList}
+                  className="w-4 h-4 text-ocean-600 rounded cursor-pointer"
+                  title="Chọn tất cả bài nộp trong danh sách này"
+                />
+              </th>
+              <th className="py-3 px-3">Học Sinh</th>
+              <th className="py-3 px-3">Lớp</th>
+              {showAssignmentColumn && <th className="py-3 px-3">Bài Kiểm Tra</th>}
+              <th className="py-3 px-3">Điểm Trắc Nghiệm</th>
+              <th className="py-3 px-3">Điểm Tự Luận</th>
+              <th className="py-3 px-3">Tổng Điểm</th>
+              <th className="py-3 px-3">Xếp Loại</th>
+              <th className="py-3 px-3">Lời Nhận Xét Của Cô</th>
+              <th className="py-3 px-3 text-right">Thao Tác</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100">
+            {subsList.map((sub) => {
+              const isPending = isSubmissionPending(sub);
+              const isWaitingGrading = sub.status === 'waiting_teacher_grading';
+              const maxTn = sub.max_score_tn !== undefined ? sub.max_score_tn : 10.0;
+              const maxTl = sub.max_score_tl !== undefined ? sub.max_score_tl : (sub.essay_question ? 3.0 : 0);
+              const maxTotal = sub.max_score || (maxTn + maxTl);
+              const perf = getPerformanceCategory(sub.score, maxTotal);
+              const isSelected = selectedIds.includes(sub.id);
+              const displayTime = formatSubmissionDisplayTime(sub);
+
+              return (
+                <tr
+                  key={sub.id}
+                  className={`hover:bg-slate-50/80 transition ${perf.rowBorderClass} ${
+                    isSelected ? 'bg-ocean-50/60' : ''
+                  }`}
+                >
+                  <td className="py-3.5 px-3 text-center">
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={() => handleToggleSelectOne(sub.id)}
+                      className="w-4 h-4 text-ocean-600 rounded cursor-pointer"
+                    />
+                  </td>
+                  <td className="py-3.5 px-3">
+                    <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
+                      <span>{sub.student_name}</span>
+                      {sub.is_late && (
+                        <span
+                          className="px-2 py-0.5 rounded-md text-[9.5px] font-black bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1"
+                          title={`Học sinh nộp bài sau thời hạn quy định ${sub.late_minutes ? `(${sub.late_minutes} phút)` : ''}`}
+                        >
+                          <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
+                          Nộp muộn
+                        </span>
+                      )}
+                      {isTestSubmission(sub) && (
+                        <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                          🧪 Thi Thử
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10.5px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
+                      <span>{sub.student_code}</span>
+                      <span className="text-slate-300">•</span>
+                      <span className="text-slate-600 font-sans font-medium flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-slate-400" />
+                        {displayTime}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="py-3.5 px-3 font-semibold text-slate-700">
+                    {sub.class_name}
+                  </td>
+                  {showAssignmentColumn && (
+                    <td className="py-3.5 px-3 font-medium text-slate-800">
+                      {sub.assignment_title}
+                    </td>
+                  )}
+                  <td className="py-3.5 px-3 font-bold text-ocean-700">
+                    {sub.score_tn ?? sub.score} / {maxTn}đ
+                  </td>
+                  {/* Cột Điểm Tự Luận: Hiển thị 0% Tự Luận (0đ) khi không có phần tự luận */}
+                  <td className="py-3.5 px-3">
+                    {maxTl > 0 ? (
+                      isWaitingGrading ? (
+                        <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                          Chờ chấm ({maxTl}đ)
+                        </span>
+                      ) : (
+                        <span className="font-bold text-purple-700">
+                          {sub.score_tl ?? 0} / {maxTl}đ
+                        </span>
+                      )
+                    ) : (
+                      <span className="text-slate-600 font-bold bg-slate-100 px-2.5 py-1 rounded-lg text-[11px] border border-slate-200 inline-block">
+                        0% Tự luận (0đ)
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-3.5 px-3 font-black text-sm text-slate-900">
+                    {sub.score} <span className="text-xs text-slate-400 font-normal">/ {maxTotal}đ</span>
+                  </td>
+                  {/* Cột Xếp Loại Màu Học Lực */}
+                  <td className="py-3.5 px-3">
+                    <span
+                      className={`font-bold px-2.5 py-1 rounded-full text-[11px] flex items-center gap-1 w-fit ${perf.badgeClass}`}
+                    >
+                      <span>{perf.icon}</span>
+                      <span>{perf.label}</span>
+                    </span>
+                  </td>
+                  <td className="py-3.5 px-3 max-w-xs">
+                    {sub.teacher_feedback_text ? (
+                      <span className="text-[11px] text-slate-700 line-clamp-2 italic bg-slate-100/70 px-2 py-1 rounded-lg">
+                        "{sub.teacher_feedback_text}"
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                        ⏳ Chưa nhận xét
+                      </span>
+                    )}
+                  </td>
+                  {/* Cột Thao Tác: Nhận xét + Nút Xóa bài nộp */}
+                  <td className="py-3.5 px-3 text-right">
+                    <div className="flex items-center justify-end gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => openGradingModal(sub)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer ${
+                          isPending
+                            ? 'bg-gradient-to-r from-ocean-600 to-teal-600 hover:from-ocean-700 hover:to-teal-700 text-white'
+                            : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                        }`}
+                      >
+                        {isPending ? 'Nhận Xét' : 'Xem Lời Phê'}
+                      </button>
+
+                      {/* Nút Xóa bài nộp này */}
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteSingle(sub.id, sub.student_name)}
+                        className="p-1.5 rounded-xl text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 transition cursor-pointer"
+                        title="Xóa bài nộp này để giải phóng dung lượng"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-6 animate-in fade-in duration-300 pb-16">
       {/* 1. Header Trang Chấm Bài */}
@@ -691,7 +1028,7 @@ export const ExamGradingPage: React.FC = () => {
             <span>Chấm Bài Kiểm Tra & Ghi Nhận Xét</span>
           </h1>
           <p className="text-xs text-slate-500 font-medium mt-0.5">
-            Gửi lời nhận xét và phản hồi kết quả trực tiếp tới học sinh • Hỗ trợ xóa dọn dẹp dung lượng
+            Kết quả học sinh được phân loại theo từng bài kiểm tra • Hỗ trợ xuất Excel và dọn dẹp dung lượng
           </p>
         </div>
 
@@ -783,81 +1120,240 @@ export const ExamGradingPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. TAB PHÂN LOẠI TRẠNG THÁI: CHỜ NHẬN XÉT / ĐÃ XONG */}
-      <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab('pending');
-            setSelectedIds([]);
-          }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition cursor-pointer shrink-0 ${
-            activeTab === 'pending'
-              ? 'bg-ocean-600 text-white shadow-md ring-2 ring-ocean-300'
-              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-          }`}
-        >
-          <Clock className="w-4 h-4" />
-          <span>⏳ Cần Nhận Xét & Chấm Bài</span>
-          <span
-            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-              activeTab === 'pending'
-                ? 'bg-white/25 text-white'
-                : pendingCount > 0
-                ? 'bg-amber-100 text-amber-800 font-black'
-                : 'bg-slate-100 text-slate-600'
+      {/* 2. THANH CHỌN ĐỀ THI TRỰC QUAN (EXAM CARDS / TABS CAROUSEL) */}
+      <div className="bg-white rounded-3xl p-4 border border-slate-200 shadow-xs space-y-3">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <FolderOpen className="w-5 h-5 text-ocean-600" />
+            <h2 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-wider">
+              Chọn Đề Thi Để Xem Kết Quả ({availableAssignments.length} Đề)
+            </h2>
+          </div>
+          <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
+            Bấm chọn 1 đề để tự động xếp gọn bài làm của đề đó
+          </span>
+        </div>
+
+        <div className="flex items-stretch gap-3 overflow-x-auto pb-2 pt-1 scrollbar-thin">
+          {/* Thẻ: Tất Cả Đề Thi */}
+          <div
+            onClick={() => handleSelectAssignment('all')}
+            className={`min-w-[210px] sm:min-w-[230px] p-3.5 rounded-2xl border-2 transition cursor-pointer flex flex-col justify-between select-none ${
+              assignmentFilter === 'all'
+                ? 'bg-gradient-to-br from-ocean-50 to-teal-50/60 border-ocean-600 shadow-md ring-2 ring-ocean-200'
+                : 'bg-slate-50/70 border-slate-200 hover:border-ocean-300 hover:bg-slate-100/70'
             }`}
           >
-            {pendingCount}
-          </span>
-        </button>
+            <div>
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-black uppercase text-ocean-700 flex items-center gap-1">
+                  <Layers className="w-3.5 h-3.5" /> Tất Cả Đề
+                </span>
+                <span className="text-[11px] font-black bg-white px-2 py-0.5 rounded-full border border-slate-200 text-slate-700">
+                  {submissions.length} bài nộp
+                </span>
+              </div>
+              <div className="font-black text-slate-900 text-xs sm:text-sm mt-1.5 line-clamp-1">
+                Tổng Hợp Toàn Bộ
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">
+                Hiển thị mọi đợt kiểm tra
+              </div>
+            </div>
+            <div className="mt-3 pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs">
+              {pendingCount > 0 ? (
+                <span className="text-amber-800 font-black flex items-center gap-1 text-[11px]">
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                  {pendingCount} bài chờ chấm
+                </span>
+              ) : (
+                <span className="text-emerald-700 font-bold text-[11px]">✓ Đã chấm xong</span>
+              )}
+              <span className="text-slate-400 font-mono text-[10px]">
+                {availableAssignments.length} đề thi
+              </span>
+            </div>
+          </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab('graded');
-            setSelectedIds([]);
-          }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition cursor-pointer shrink-0 ${
-            activeTab === 'graded'
-              ? 'bg-emerald-600 text-white shadow-md ring-2 ring-emerald-300'
-              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-          }`}
-        >
-          <CheckCircle2 className="w-4 h-4" />
-          <span>✓ Đã Nhận Xét Xong</span>
-          <span
-            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-              activeTab === 'graded' ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'
-            }`}
-          >
-            {completedCount}
-          </span>
-        </button>
+          {/* Danh sách thẻ cho từng Đề thi */}
+          {availableAssignments.map((asg) => {
+            const isSelected = assignmentFilter === asg.id;
+            return (
+              <div
+                key={asg.id}
+                onClick={() => handleSelectAssignment(asg.id)}
+                className={`min-w-[260px] sm:min-w-[280px] p-3.5 rounded-2xl border-2 transition cursor-pointer flex flex-col justify-between select-none ${
+                  isSelected
+                    ? 'bg-gradient-to-br from-ocean-50 to-teal-50/60 border-ocean-600 shadow-md ring-2 ring-ocean-200'
+                    : 'bg-slate-50/70 border-slate-200 hover:border-ocean-300 hover:bg-slate-100/70'
+                }`}
+              >
+                <div>
+                  <div className="flex items-center justify-between gap-1">
+                    <span className="text-[10px] font-black uppercase text-ocean-700 bg-ocean-100/80 px-2 py-0.5 rounded-md flex items-center gap-1">
+                      <BookOpen className="w-3 h-3" /> Khối {asg.grade}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const subsForThis = submissions.filter((s) => s.assignment_id === asg.id);
+                        handleExportExcelForAssignment(asg.title, subsForThis);
+                      }}
+                      className="text-[10.5px] font-bold text-ocean-700 hover:text-ocean-900 bg-white hover:bg-ocean-50 border border-ocean-200 px-2 py-0.5 rounded-lg flex items-center gap-1 transition shadow-2xs cursor-pointer"
+                      title="Tải bảng điểm Excel của đề thi này"
+                    >
+                      <Download className="w-3 h-3" /> Excel
+                    </button>
+                  </div>
+                  <div className="font-black text-slate-900 text-xs sm:text-sm mt-1.5 line-clamp-1" title={asg.title}>
+                    {asg.title}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                    <span>ĐTB: <strong className="text-slate-800">{asg.avg_score}đ</strong></span>
+                    <span>•</span>
+                    <span>Đã nộp: <strong className="text-slate-800">{asg.submissions_count}</strong> bài</span>
+                  </div>
+                </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            setActiveTab('all');
-            setSelectedIds([]);
-          }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition cursor-pointer shrink-0 ${
-            activeTab === 'all'
-              ? 'bg-slate-900 text-white shadow-md ring-2 ring-slate-400'
-              : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>Tất Cả ({allScopedCount})</span>
-        </button>
+                <div className="mt-2.5 pt-2 border-t border-slate-200/80 flex items-center justify-between text-[11px]">
+                  {asg.pending_count > 0 ? (
+                    <span className="text-amber-800 font-black bg-amber-100/80 px-2 py-0.5 rounded-md flex items-center gap-1 text-[10.5px]">
+                      <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse" />
+                      {asg.pending_count} chờ chấm
+                    </span>
+                  ) : asg.submissions_count > 0 ? (
+                    <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md text-[10.5px]">
+                      ✓ Đã chấm {asg.graded_count}/{asg.submissions_count}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 italic text-[10.5px]">Chưa có bài nộp</span>
+                  )}
+
+                  {isSelected ? (
+                    <span className="text-ocean-700 font-black flex items-center gap-0.5 text-xs">
+                      Đang xem <ChevronRight className="w-3.5 h-3.5" />
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 hover:text-slate-600 text-[11px]">
+                      Bấm chọn
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
-      {/* 3. BỘ LỌC TÌM KIẾM THEO KHỐI, LỚP, HỌC LỰC, HẠN NỘP (GỢI Ý 4) */}
+      {/* 3. TAB PHÂN LOẠI TRẠNG THÁI VÀ CHUYỂN ĐỔI CHẾ ĐỘ XEM */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-2">
+        <div className="flex items-center gap-2 overflow-x-auto">
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('pending');
+              setSelectedIds([]);
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition cursor-pointer shrink-0 ${
+              activeTab === 'pending'
+                ? 'bg-ocean-600 text-white shadow-md ring-2 ring-ocean-300'
+                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <Clock className="w-4 h-4" />
+            <span>⏳ Cần Nhận Xét & Chấm Bài</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                activeTab === 'pending'
+                  ? 'bg-white/25 text-white'
+                  : pendingCount > 0
+                  ? 'bg-amber-100 text-amber-800 font-black'
+                  : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {pendingCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('graded');
+              setSelectedIds([]);
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition cursor-pointer shrink-0 ${
+              activeTab === 'graded'
+                ? 'bg-emerald-600 text-white shadow-md ring-2 ring-emerald-300'
+                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span>✓ Đã Nhận Xét Xong</span>
+            <span
+              className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                activeTab === 'graded' ? 'bg-white/25 text-white' : 'bg-slate-100 text-slate-600'
+              }`}
+            >
+              {completedCount}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTab('all');
+              setSelectedIds([]);
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-black transition cursor-pointer shrink-0 ${
+              activeTab === 'all'
+                ? 'bg-slate-900 text-white shadow-md ring-2 ring-slate-400'
+                : 'bg-white text-slate-700 hover:bg-slate-100 border border-slate-200'
+            }`}
+          >
+            <FileText className="w-4 h-4" />
+            <span>Tất Cả ({allScopedCount})</span>
+          </button>
+        </div>
+
+        {/* Nút chuyển đổi Chế độ xem: Gom nhóm vs Bảng tổng hợp */}
+        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200 self-start sm:self-auto shrink-0">
+          <button
+            type="button"
+            onClick={() => setViewMode('grouped')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+              viewMode === 'grouped'
+                ? 'bg-white text-ocean-800 shadow-xs ring-1 ring-slate-200'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Xếp kết quả học sinh theo từng đề thi riêng biệt"
+          >
+            <LayoutGrid className="w-3.5 h-3.5 text-ocean-600" />
+            <span>Xếp Theo Đề Thi</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+              viewMode === 'table'
+                ? 'bg-white text-ocean-800 shadow-xs ring-1 ring-slate-200'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+            title="Xem toàn bộ bài nộp trên một bảng duy nhất"
+          >
+            <List className="w-3.5 h-3.5 text-slate-600" />
+            <span>Bảng Tổng Hợp</span>
+          </button>
+        </div>
+      </div>
+
+      {/* 4. BỘ LỌC TÌM KIẾM THEO KHỐI, LỚP, HỌC LỰC, HẠN NỘP */}
       <div className="flex flex-col sm:flex-row items-center gap-3 bg-white p-3 rounded-2xl border border-slate-200 shadow-xs flex-wrap">
         {/* Lọc theo đợt giao bài */}
         <select
           value={assignmentFilter}
-          onChange={(e) => setAssignmentFilter(e.target.value)}
+          onChange={(e) => handleSelectAssignment(e.target.value)}
           className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-ocean-500 max-w-xs cursor-pointer"
         >
           <option value="all">Tất cả đợt giao bài ({assignmentsList.length})</option>
@@ -868,7 +1364,7 @@ export const ExamGradingPage: React.FC = () => {
           ))}
         </select>
 
-        {/* Lọc theo Khối (Gợi ý 4) */}
+        {/* Lọc theo Khối */}
         <select
           value={gradeFilter}
           onChange={(e) => handleGradeChange(e.target.value === 'all' ? 'all' : Number(e.target.value))}
@@ -881,7 +1377,7 @@ export const ExamGradingPage: React.FC = () => {
           <option value="9">Khối 9</option>
         </select>
 
-        {/* Lọc theo Lớp (Gợi ý 4) */}
+        {/* Lọc theo Lớp */}
         <select
           value={classFilter}
           onChange={(e) => setClassFilter(e.target.value)}
@@ -895,7 +1391,7 @@ export const ExamGradingPage: React.FC = () => {
           ))}
         </select>
 
-        {/* Lọc theo Trạng thái Nộp bài (Đúng hạn vs Nộp muộn - Gợi ý 3) */}
+        {/* Lọc theo Trạng thái Nộp bài (Đúng hạn vs Nộp muộn) */}
         <select
           value={lateFilter}
           onChange={(e) => setLateFilter(e.target.value as any)}
@@ -985,202 +1481,92 @@ export const ExamGradingPage: React.FC = () => {
         </div>
       )}
 
-      {/* 4. BẢNG DANH SÁCH BÀI NỘP */}
-      <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm overflow-hidden">
-        {filteredSubmissions.length === 0 ? (
-          activeTab === 'pending' ? (
-            <div className="py-16 text-center bg-white rounded-3xl border-2 border-dashed border-emerald-200">
-              <div className="w-14 h-14 mx-auto rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-3">
-                <CheckCircle2 className="w-8 h-8" />
-              </div>
-              <h3 className="font-black text-slate-800 text-base">
-                🎉 Tuyệt vời! Cô Hảo đã hoàn tất nhận xét cho tất cả học sinh!
-              </h3>
-              <p className="text-xs text-slate-500 mt-1 max-w-md mx-auto">
-                Hiện không còn bài làm nào đang chờ nhận xét. Các em học sinh đã nhận được đầy đủ kết quả và lời phê của Cô.
-              </p>
-              {completedCount > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setActiveTab('graded')}
-                  className="mt-4 px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition cursor-pointer"
-                >
-                  Xem Danh Sách Bài Đã Nhận Xét Xong ({completedCount})
-                </button>
-              )}
+      {/* 5. HIỂN THỊ DANH SÁCH BÀI NỘP THEO CHẾ ĐỘ XEM */}
+      {viewMode === 'grouped' ? (
+        /* CHẾ ĐỘ GOM NHÓM THEO TỪNG ĐỀ THI */
+        <div className="space-y-6">
+          {filteredAssignmentsToDisplay.length === 0 ? (
+            <div className="bg-white rounded-3xl p-12 text-center text-slate-400 italic text-xs border border-slate-200">
+              Không tìm thấy đề thi nào phù hợp với bộ lọc hiện tại.
             </div>
           ) : (
-            <div className="py-12 text-center text-slate-400 italic text-xs">
-              Không tìm thấy bài nộp nào phù hợp với bộ lọc.
-            </div>
-          )
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50 text-slate-600 font-black uppercase tracking-wider border-b border-slate-200">
-                <tr>
-                  <th className="py-3 px-3 w-10 text-center">
-                    <input
-                      type="checkbox"
-                      checked={
-                        filteredSubmissions.length > 0 &&
-                        selectedIds.length === filteredSubmissions.length
-                      }
-                      onChange={handleToggleSelectAll}
-                      className="w-4 h-4 text-ocean-600 rounded cursor-pointer"
-                      title="Chọn tất cả danh sách"
-                    />
-                  </th>
-                  <th className="py-3 px-3">Học Sinh</th>
-                  <th className="py-3 px-3">Lớp</th>
-                  <th className="py-3 px-3">Bài Kiểm Tra</th>
-                  <th className="py-3 px-3">Điểm Trắc Nghiệm</th>
-                  <th className="py-3 px-3">Điểm Tự Luận</th>
-                  <th className="py-3 px-3">Tổng Điểm</th>
-                  <th className="py-3 px-3">Xếp Loại Học Lực</th>
-                  <th className="py-3 px-3">Lời Nhận Xét Của Cô</th>
-                  <th className="py-3 px-3 text-right">Thao Tác</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {filteredSubmissions.map((sub) => {
-                  const isPending = isSubmissionPending(sub);
-                  const isWaitingGrading = sub.status === 'waiting_teacher_grading';
-                  const maxTn = sub.max_score_tn !== undefined ? sub.max_score_tn : 10.0;
-                  const maxTl = sub.max_score_tl !== undefined ? sub.max_score_tl : (sub.essay_question ? 3.0 : 0);
-                  const maxTotal = sub.max_score || (maxTn + maxTl);
-                  const perf = getPerformanceCategory(sub.score, maxTotal);
-                  const isSelected = selectedIds.includes(sub.id);
+            filteredAssignmentsToDisplay.map((asg) => {
+              // Lọc bài nộp thuộc đề thi này theo tất cả các bộ lọc phụ
+              const asgFilteredSubs = filteredSubmissions.filter(
+                (s) => s.assignment_id === asg.id
+              );
+              const allAsgSubs = submissions.filter((s) => s.assignment_id === asg.id);
 
-                  return (
-                    <tr
-                      key={sub.id}
-                      className={`hover:bg-slate-50/80 transition ${perf.rowBorderClass} ${
-                        isSelected ? 'bg-ocean-50/60' : ''
-                      }`}
-                    >
-                      <td className="py-3.5 px-3 text-center">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => handleToggleSelectOne(sub.id)}
-                          className="w-4 h-4 text-ocean-600 rounded cursor-pointer"
-                        />
-                      </td>
-                      <td className="py-3.5 px-3">
-                        <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
-                          <span>{sub.student_name}</span>
-                          {sub.is_late && (
-                            <span
-                              className="px-2 py-0.5 rounded-md text-[9.5px] font-black bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1"
-                              title={`Học sinh nộp bài sau thời hạn quy định ${sub.late_minutes ? `(${sub.late_minutes} phút)` : ''}`}
-                            >
-                              <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
-                              Nộp muộn
-                            </span>
-                          )}
-                          {isTestSubmission(sub) && (
-                            <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300">
-                              🧪 Thi Thử
-                            </span>
-                          )}
+              return (
+                <div
+                  key={asg.id}
+                  className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4"
+                >
+                  {/* Header Khối Đề Thi */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
+                    <div className="flex items-start gap-3">
+                      <div className="w-10 h-10 rounded-2xl bg-ocean-50 text-ocean-700 flex items-center justify-center shrink-0 border border-ocean-200">
+                        <BookOpen className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-black text-slate-900 text-base">
+                            {asg.title}
+                          </h3>
+                          <span className="text-[10.5px] font-black uppercase text-ocean-700 bg-ocean-100/80 px-2 py-0.5 rounded-md">
+                            Khối {asg.grade}
+                          </span>
                         </div>
-                        <div className="text-[10.5px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
-                          <span>{sub.student_code}</span>
-                          {sub.submitted_at && (
+                        <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-3 flex-wrap">
+                          <span>
+                            Tổng bài nộp:{' '}
+                            <strong className="text-slate-800">{allAsgSubs.length}</strong>
+                          </span>
+                          <span>•</span>
+                          <span>
+                            Điểm TB:{' '}
+                            <strong className="text-slate-800">{asg.avg_score}đ</strong>
+                          </span>
+                          {asg.pending_count > 0 && (
                             <>
-                              <span className="text-slate-300">•</span>
-                              <span className="text-slate-500 font-sans">{sub.submitted_at}</span>
+                              <span>•</span>
+                              <span className="text-amber-800 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                                ⏳ {asg.pending_count} bài chờ chấm
+                              </span>
                             </>
                           )}
                         </div>
-                      </td>
-                      <td className="py-3.5 px-3 font-semibold text-slate-700">
-                        {sub.class_name}
-                      </td>
-                      <td className="py-3.5 px-3 font-medium text-slate-800">
-                        {sub.assignment_title}
-                      </td>
-                      <td className="py-3.5 px-3 font-bold text-ocean-700">
-                        {sub.score_tn ?? sub.score} / {maxTn}đ
-                      </td>
-                      {/* Cột Điểm Tự Luận: Hiển thị 0% Tự Luận (0đ) khi không có phần tự luận */}
-                      <td className="py-3.5 px-3">
-                        {maxTl > 0 ? (
-                          isWaitingGrading ? (
-                            <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
-                              Chờ chấm ({maxTl}đ)
-                            </span>
-                          ) : (
-                            <span className="font-bold text-purple-700">
-                              {sub.score_tl ?? 0} / {maxTl}đ
-                            </span>
-                          )
-                        ) : (
-                          <span className="text-slate-600 font-bold bg-slate-100 px-2.5 py-1 rounded-lg text-[11px] border border-slate-200 inline-block">
-                            0% Tự luận (0đ)
-                          </span>
-                        )}
-                      </td>
-                      <td className="py-3.5 px-3 font-black text-sm text-slate-900">
-                        {sub.score} <span className="text-xs text-slate-400 font-normal">/ {maxTotal}đ</span>
-                      </td>
-                      {/* Cột Xếp Loại Màu Học Lực */}
-                      <td className="py-3.5 px-3">
-                        <span
-                          className={`font-bold px-2.5 py-1 rounded-full text-[11px] flex items-center gap-1 w-fit ${perf.badgeClass}`}
-                        >
-                          <span>{perf.icon}</span>
-                          <span>{perf.label}</span>
-                        </span>
-                      </td>
-                      <td className="py-3.5 px-3 max-w-xs">
-                        {sub.teacher_feedback_text ? (
-                          <span className="text-[11px] text-slate-700 line-clamp-1 italic bg-slate-100/70 px-2 py-1 rounded-lg">
-                            "{sub.teacher_feedback_text}"
-                          </span>
-                        ) : (
-                          <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
-                            ⏳ Chưa nhận xét
-                          </span>
-                        )}
-                      </td>
-                      {/* Cột Thao Tác: Nhận xét + Nút Xóa bài nộp */}
-                      <td className="py-3.5 px-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => openGradingModal(sub)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer ${
-                              isPending
-                                ? 'bg-gradient-to-r from-ocean-600 to-teal-600 hover:from-ocean-700 hover:to-teal-700 text-white'
-                                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                            }`}
-                          >
-                            {isPending ? 'Nhận Xét' : 'Xem Lời Phê'}
-                          </button>
+                      </div>
+                    </div>
 
-                          {/* Nút Xóa bài nộp này */}
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteSingle(sub.id, sub.student_name)}
-                            className="p-1.5 rounded-xl text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 transition cursor-pointer"
-                            title="Xóa bài nộp này để giải phóng dung lượng"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+                    <div className="flex items-center gap-2 self-end sm:self-auto">
+                      <button
+                        type="button"
+                        onClick={() => handleExportExcelForAssignment(asg.title, allAsgSubs)}
+                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-ocean-50 text-slate-700 hover:text-ocean-800 text-xs font-bold border border-slate-200 transition cursor-pointer shadow-2xs"
+                        title="Xuất bảng điểm Excel cho bài kiểm tra này"
+                      >
+                        <Download className="w-3.5 h-3.5 text-ocean-600" />
+                        <span>Xuất Excel Đề Này</span>
+                      </button>
+                    </div>
+                  </div>
 
-      {/* 5. MODAL NHẬN XÉT NHANH HÀNG LOẠT 1-CLICK */}
+                  {/* Bảng Học Sinh Trong Đề Thi Này */}
+                  {renderSubmissionTable(asgFilteredSubs, false)}
+                </div>
+              );
+            })
+          )}
+        </div>
+      ) : (
+        /* CHẾ ĐỘ BẢNG TỔNG HỢP DUY NHẤT */
+        <div className="bg-white rounded-3xl p-5 border border-slate-200 shadow-sm overflow-hidden">
+          {renderSubmissionTable(filteredSubmissions, true)}
+        </div>
+      )}
+
+      {/* 6. MODAL NHẬN XÉT NHANH HÀNG LOẠT 1-CLICK */}
       {isBulkModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs overflow-y-auto">
           <div className="bg-white rounded-3xl max-w-lg w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 my-auto">
