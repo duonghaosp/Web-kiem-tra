@@ -169,6 +169,26 @@ export function isTestSubmission(sub: any): boolean {
   );
 }
 
+// Trích xuất Khối học (6, 7, 8, 9) từ tên lớp (VD: "Lớp 9A1" -> 9, "9A1" -> 9)
+export function getClassGradeFromName(name: string): number | null {
+  if (!name) return null;
+  const match = name.match(/\d+/);
+  if (match) {
+    const num = parseInt(match[0].charAt(0));
+    if (num >= 6 && num <= 9) return num;
+  }
+  return null;
+}
+
+// So sánh tương đương giữa 2 tên lớp học (VD: "Lớp 9A1" tương đương "9A1")
+export function isSameClass(clsA: string, clsB: string): boolean {
+  if (!clsA || !clsB) return false;
+  if (clsA === clsB) return true;
+  const cleanA = clsA.toLowerCase().replace(/lớp\s*/i, '').trim();
+  const cleanB = clsB.toLowerCase().replace(/lớp\s*/i, '').trim();
+  return cleanA === cleanB;
+}
+
 // Xác định bài nộp cần được nhận xét / chấm điểm
 export function isSubmissionPending(sub: any): boolean {
   if (!sub) return false;
@@ -453,10 +473,35 @@ export const ExamGradingPage: React.FC = () => {
     return classesList.filter((c) => c.grade === Number(gradeFilter));
   }, [classesList, gradeFilter]);
 
-  // Xử lý khi chọn đổi Khối -> Reset lại bộ lọc lớp
+  // Xử lý khi chọn đổi Khối -> Reset lại bộ lọc lớp & đồng bộ đề thi
   const handleGradeChange = (newGrade: number | 'all') => {
     setGradeFilter(newGrade);
     setClassFilter('all');
+    // Nếu đề thi đang chọn không thuộc khối mới -> reset về 'all'
+    if (assignmentFilter !== 'all') {
+      const currAsg = availableAssignments.find((a) => a.id === assignmentFilter);
+      if (currAsg && newGrade !== 'all' && currAsg.grade !== newGrade) {
+        setAssignmentFilter('all');
+      }
+    }
+  };
+
+  // Xử lý khi chọn đổi Lớp -> Tự động đồng bộ Khối tương ứng và lọc đề thi chính xác
+  const handleClassChange = (newClass: string) => {
+    setClassFilter(newClass);
+    if (newClass !== 'all') {
+      const classGrade = getClassGradeFromName(newClass);
+      if (classGrade) {
+        setGradeFilter(classGrade);
+      }
+      // Nếu đề thi đang chọn không thuộc khối của lớp này -> reset về 'all'
+      if (assignmentFilter !== 'all') {
+        const currAsg = availableAssignments.find((a) => a.id === assignmentFilter);
+        if (currAsg && classGrade && currAsg.grade !== classGrade) {
+          setAssignmentFilter('all');
+        }
+      }
+    }
   };
 
   // Nút Làm Mới Dữ Liệu 1-Click (Đồng bộ tức thì từ Supabase Cloud)
@@ -504,7 +549,7 @@ export const ExamGradingPage: React.FC = () => {
         if (targetGrade !== gradeFilter) return false;
       }
       // 3. Lọc theo Lớp
-      if (classFilter !== 'all' && sub.class_name !== classFilter) {
+      if (classFilter !== 'all' && !isSameClass(sub.class_name, classFilter)) {
         return false;
       }
       return true;
@@ -828,7 +873,7 @@ export const ExamGradingPage: React.FC = () => {
       }
 
       // 4. Lọc theo Lớp
-      if (classFilter !== 'all' && sub.class_name !== classFilter) return false;
+      if (classFilter !== 'all' && !isSameClass(sub.class_name, classFilter)) return false;
 
       // 5. Lọc theo Trạng thái Nộp muộn / Đúng hạn
       if (lateFilter === 'late_only' && !sub.is_late) return false;
@@ -857,20 +902,61 @@ export const ExamGradingPage: React.FC = () => {
     });
   }, [submissions, activeTab, assignmentFilter, gradeFilter, classFilter, lateFilter, scoreFilter, testTypeFilter, searchTerm, assignmentsList]);
 
-  // Danh sách các đề thi cần hiển thị theo bộ lọc đang chọn
+  // Danh sách các đề thi cần hiển thị theo bộ lọc đang chọn (Khối & Lớp)
   const filteredAssignmentsToDisplay = useMemo(() => {
+    const classGrade = classFilter !== 'all' ? getClassGradeFromName(classFilter) : null;
+    const effectiveGrade = gradeFilter !== 'all' ? gradeFilter : classGrade;
+
     return availableAssignments.filter((asg) => {
       // 1. Lọc theo đợt giao bài đang chọn
       if (assignmentFilter !== 'all' && asg.id !== assignmentFilter) {
         return false;
       }
       // 2. Lọc theo Khối
-      if (gradeFilter !== 'all' && asg.grade !== gradeFilter) {
+      if (effectiveGrade && asg.grade !== effectiveGrade) {
         return false;
+      }
+      // 3. Lọc theo Lớp học đang chọn
+      if (classFilter !== 'all') {
+        const hasSubFromClass = submissions.some(
+          (s) => s.assignment_id === asg.id && isSameClass(s.class_name, classFilter)
+        );
+        const isTargeted =
+          !asg.target_ids ||
+          asg.target_ids.length === 0 ||
+          asg.target_ids.some((t: string) => isSameClass(t, classFilter));
+        if (!hasSubFromClass && !isTargeted) {
+          return false;
+        }
       }
       return true;
     });
-  }, [availableAssignments, assignmentFilter, gradeFilter]);
+  }, [availableAssignments, assignmentFilter, gradeFilter, classFilter, submissions]);
+
+  // Danh sách đề thi hiển thị trong Thanh Chọn Đề Thi Carousel (Được lọc theo Khối/Lớp)
+  const carouselAssignments = useMemo(() => {
+    const classGrade = classFilter !== 'all' ? getClassGradeFromName(classFilter) : null;
+    const effectiveGrade = gradeFilter !== 'all' ? gradeFilter : classGrade;
+
+    if (!effectiveGrade && classFilter === 'all') {
+      return availableAssignments;
+    }
+
+    return availableAssignments.filter((asg) => {
+      if (effectiveGrade && asg.grade !== effectiveGrade) return false;
+      if (classFilter !== 'all') {
+        const hasSubFromClass = submissions.some(
+          (s) => s.assignment_id === asg.id && isSameClass(s.class_name, classFilter)
+        );
+        const isTargeted =
+          !asg.target_ids ||
+          asg.target_ids.length === 0 ||
+          asg.target_ids.some((t: string) => isSameClass(t, classFilter));
+        if (!hasSubFromClass && !isTargeted) return false;
+      }
+      return true;
+    });
+  }, [availableAssignments, gradeFilter, classFilter, submissions]);
 
   // Hàm render bảng danh sách bài nộp với hỗ trợ Mật Độ Gọn Nhẹ và Tự Động Ẩn Cột Tự Luận
   const renderSubmissionTable = (
@@ -1204,7 +1290,8 @@ export const ExamGradingPage: React.FC = () => {
           <div className="flex items-center gap-2">
             <FolderOpen className="w-5 h-5 text-ocean-600" />
             <h2 className="text-xs sm:text-sm font-black text-slate-800 uppercase tracking-wider">
-              Chọn Đề Thi Để Xem Kết Quả ({availableAssignments.length} Đề)
+              Chọn Đề Thi Để Xem Kết Quả ({carouselAssignments.length} Đề
+              {classFilter !== 'all' ? ` • ${classFilter}` : gradeFilter !== 'all' ? ` • Khối ${gradeFilter}` : ''})
             </h2>
           </div>
           <span className="text-[11px] text-slate-500 font-medium hidden sm:inline">
@@ -1228,14 +1315,14 @@ export const ExamGradingPage: React.FC = () => {
                   <Layers className="w-3.5 h-3.5" /> Tất Cả Đề
                 </span>
                 <span className="text-[11px] font-black bg-white px-2 py-0.5 rounded-full border border-slate-200 text-slate-700">
-                  {submissions.length} bài nộp
+                  {scopedSubmissions.length} bài nộp
                 </span>
               </div>
               <div className="font-black text-slate-900 text-xs sm:text-sm mt-1.5 line-clamp-1">
                 Tổng Hợp Toàn Bộ
               </div>
               <div className="text-[11px] text-slate-500 mt-0.5">
-                Hiển thị mọi đợt kiểm tra
+                {classFilter !== 'all' ? `Xem mọi đề thi của ${classFilter}` : gradeFilter !== 'all' ? `Xem mọi đề thi Khối ${gradeFilter}` : 'Hiển thị mọi đợt kiểm tra'}
               </div>
             </div>
             <div className="mt-3 pt-2 border-t border-slate-200/80 flex items-center justify-between text-xs">
@@ -1248,13 +1335,13 @@ export const ExamGradingPage: React.FC = () => {
                 <span className="text-emerald-700 font-bold text-[11px]">✓ Đã chấm xong</span>
               )}
               <span className="text-slate-400 font-mono text-[10px]">
-                {availableAssignments.length} đề thi
+                {carouselAssignments.length} đề thi
               </span>
             </div>
           </div>
 
-          {/* Danh sách thẻ cho từng Đề thi */}
-          {availableAssignments.map((asg) => {
+          {/* Danh sách thẻ cho từng Đề thi thuộc Khối / Lớp đang chọn */}
+          {carouselAssignments.map((asg) => {
             const isSelected = assignmentFilter === asg.id;
             return (
               <div
@@ -1332,13 +1419,16 @@ export const ExamGradingPage: React.FC = () => {
             <span>Lọc Nhanh Theo Lớp Học ({classesList.length} Lớp):</span>
           </div>
           <span className="text-[11px] text-slate-400">
-            Bấm 1 click để chỉ xem học sinh của đúng lớp đó
+            Bấm 1 click để chỉ xem đề thi & học sinh của đúng lớp đó
           </span>
         </div>
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin flex-wrap sm:flex-nowrap">
           <button
             type="button"
-            onClick={() => setClassFilter('all')}
+            onClick={() => {
+              setClassFilter('all');
+              setGradeFilter('all');
+            }}
             className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer shrink-0 ${
               classFilter === 'all'
                 ? 'bg-ocean-600 text-white shadow-xs ring-2 ring-ocean-200'
@@ -1348,18 +1438,13 @@ export const ExamGradingPage: React.FC = () => {
             🏫 Tất Cả ({classesList.length} Lớp)
           </button>
           {classesList.map((c) => {
-            const isSelected = classFilter === c.name;
-            const classSubCount = submissions.filter((s) => s.class_name === c.name).length;
+            const isSelected = isSameClass(classFilter, c.name);
+            const classSubCount = submissions.filter((s) => isSameClass(s.class_name, c.name)).length;
             return (
               <button
                 key={c.id || c.name}
                 type="button"
-                onClick={() => {
-                  setClassFilter(c.name);
-                  if (c.grade && gradeFilter !== 'all' && gradeFilter !== c.grade) {
-                    setGradeFilter('all');
-                  }
-                }}
+                onClick={() => handleClassChange(c.name)}
                 className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
                   isSelected
                     ? 'bg-ocean-600 text-white shadow-xs ring-2 ring-ocean-200 font-black'
@@ -1542,7 +1627,7 @@ export const ExamGradingPage: React.FC = () => {
         {/* Lọc theo Lớp */}
         <select
           value={classFilter}
-          onChange={(e) => setClassFilter(e.target.value)}
+          onChange={(e) => handleClassChange(e.target.value)}
           className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-700 bg-slate-50 focus:outline-none focus:ring-2 focus:ring-ocean-500 cursor-pointer"
         >
           <option value="all">Tất cả các Lớp ({availableClasses.length})</option>
