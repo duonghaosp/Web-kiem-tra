@@ -37,6 +37,11 @@ import {
   FolderOpen,
   BookOpen,
   ChevronRight,
+  ChevronDown,
+  ChevronUp,
+  Maximize2,
+  Minimize2,
+  Folder,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { StudentResult, Question, ClassItem } from '../types/database';
@@ -266,11 +271,24 @@ export const ExamGradingPage: React.FC = () => {
     return INITIAL_CLASSES;
   });
 
+  // Tab phân loại: 'pending' (Cần nhận xét), 'graded' (Đã xong), 'all' (Tất cả)
+  const [activeTab, setActiveTab] = useState<'pending' | 'graded' | 'all'>('pending');
+
   // Chế độ xem: 'grouped' (Gom nhóm theo từng Đề thi - Mặc định) hoặc 'table' (Bảng danh sách tổng hợp)
   const [viewMode, setViewMode] = useState<'grouped' | 'table'>('grouped');
 
-  // Tab phân loại trạng thái bài: 'pending' (Chờ nhận xét/chấm), 'graded' (Đã xong), 'all' (Tất cả)
-  const [activeTab, setActiveTab] = useState<'pending' | 'graded' | 'all'>('pending');
+  // Danh sách các ID đề thi đang được mở rộng trong chế độ gom nhóm
+  const [expandedAssignmentIds, setExpandedAssignmentIds] = useState<Set<string>>(() => {
+    const fromUrl = searchParams.get('assignmentId');
+    if (fromUrl && fromUrl !== 'all') return new Set([fromUrl]);
+    return new Set();
+  });
+
+  // Bộ lọc lớp con cho từng đề thi cụ thể trong chế độ gom nhóm: Record<assignmentId, className>
+  const [assignmentClassSubFilter, setAssignmentClassSubFilter] = useState<Record<string, string>>({});
+
+  // Chế độ hiển thị mật độ bảng: gọn nhẹ (compact) hoặc tiêu chuẩn
+  const [isCompactDensity, setIsCompactDensity] = useState<boolean>(true);
 
   // Bộ lọc đợt giao bài / đề thi
   const [assignmentFilter, setAssignmentFilter] = useState<string>(() => {
@@ -350,12 +368,50 @@ export const ExamGradingPage: React.FC = () => {
     return list;
   }, [assignmentsList, submissions]);
 
+  // Tự động mở rộng đề thi đầu tiên có bài chờ chấm nếu chưa mở đề nào
+  useEffect(() => {
+    if (availableAssignments.length > 0 && expandedAssignmentIds.size === 0) {
+      if (assignmentFilter !== 'all') {
+        setExpandedAssignmentIds(new Set([assignmentFilter]));
+      } else {
+        const firstPending = availableAssignments.find((a) => a.pending_count > 0) || availableAssignments[0];
+        if (firstPending) {
+          setExpandedAssignmentIds(new Set([firstPending.id]));
+        }
+      }
+    }
+  }, [availableAssignments, assignmentFilter]);
+
+  // Bật / Tắt mở rộng cho 1 đề thi
+  const toggleExpandAssignment = (asgId: string) => {
+    setExpandedAssignmentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(asgId)) {
+        next.delete(asgId);
+      } else {
+        next.add(asgId);
+      }
+      return next;
+    });
+  };
+
+  const handleExpandAll = () => {
+    setExpandedAssignmentIds(new Set(availableAssignments.map((a) => a.id)));
+  };
+
+  const handleCollapseAll = () => {
+    setExpandedAssignmentIds(new Set());
+  };
+
   // Xử lý chọn đề thi và ghi nhớ lựa chọn
   const handleSelectAssignment = (asgId: string) => {
     setAssignmentFilter(asgId);
     try {
       localStorage.setItem('geo_last_grading_assignment', asgId);
     } catch (e) {}
+    if (asgId !== 'all') {
+      setExpandedAssignmentIds((prev) => new Set([...prev, asgId]));
+    }
   };
 
   // Xuất file Excel danh sách điểm & nhận xét cho một đề thi cụ thể
@@ -816,12 +872,16 @@ export const ExamGradingPage: React.FC = () => {
     });
   }, [availableAssignments, assignmentFilter, gradeFilter]);
 
-  // Hàm render bảng danh sách bài nộp
-  const renderSubmissionTable = (subsList: any[], showAssignmentColumn: boolean = true) => {
+  // Hàm render bảng danh sách bài nộp với hỗ trợ Mật Độ Gọn Nhẹ và Tự Động Ẩn Cột Tự Luận
+  const renderSubmissionTable = (
+    subsList: any[],
+    showAssignmentColumn: boolean = true,
+    customShowEssay?: boolean
+  ) => {
     if (subsList.length === 0) {
       if (activeTab === 'pending') {
         return (
-          <div className="py-12 text-center bg-white rounded-2xl border-2 border-dashed border-emerald-200 p-6">
+          <div className="py-10 text-center bg-white rounded-2xl border-2 border-dashed border-emerald-200 p-6">
             <div className="w-12 h-12 mx-auto rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center mb-2">
               <CheckCircle2 className="w-7 h-7" />
             </div>
@@ -835,11 +895,19 @@ export const ExamGradingPage: React.FC = () => {
         );
       }
       return (
-        <div className="py-10 text-center text-slate-400 italic text-xs bg-slate-50/60 rounded-2xl border border-slate-200">
+        <div className="py-8 text-center text-slate-400 italic text-xs bg-slate-50/60 rounded-2xl border border-slate-200">
           Không tìm thấy bài nộp nào phù hợp với các tiêu chí lọc đang chọn.
         </div>
       );
     }
+
+    // Tự động phát hiện xem danh sách có bài nào có câu hỏi tự luận không
+    const hasAnyEssay =
+      customShowEssay !== undefined
+        ? customShowEssay
+        : subsList.some(
+            (s) => (s.max_score_tl !== undefined ? s.max_score_tl > 0 : Boolean(s.essay_question))
+          );
 
     const isAllSelectedInList =
       subsList.length > 0 && subsList.every((s) => selectedIds.includes(s.id));
@@ -854,29 +922,32 @@ export const ExamGradingPage: React.FC = () => {
       }
     };
 
+    const padTh = isCompactDensity ? 'py-2 px-2.5 text-[11px]' : 'py-3 px-3 text-xs';
+    const padTd = isCompactDensity ? 'py-2 px-2.5 text-xs' : 'py-3.5 px-3 text-xs';
+
     return (
       <div className="overflow-x-auto">
         <table className="w-full text-left text-xs">
           <thead className="bg-slate-50 text-slate-600 font-black uppercase tracking-wider border-b border-slate-200">
             <tr>
-              <th className="py-3 px-3 w-10 text-center">
+              <th className={`${padTh} w-9 text-center`}>
                 <input
                   type="checkbox"
                   checked={isAllSelectedInList}
                   onChange={toggleSelectAllInList}
-                  className="w-4 h-4 text-ocean-600 rounded cursor-pointer"
+                  className="w-3.5 h-3.5 text-ocean-600 rounded cursor-pointer"
                   title="Chọn tất cả bài nộp trong danh sách này"
                 />
               </th>
-              <th className="py-3 px-3">Học Sinh</th>
-              <th className="py-3 px-3">Lớp</th>
-              {showAssignmentColumn && <th className="py-3 px-3">Bài Kiểm Tra</th>}
-              <th className="py-3 px-3">Điểm Trắc Nghiệm</th>
-              <th className="py-3 px-3">Điểm Tự Luận</th>
-              <th className="py-3 px-3">Tổng Điểm</th>
-              <th className="py-3 px-3">Xếp Loại</th>
-              <th className="py-3 px-3">Lời Nhận Xét Của Cô</th>
-              <th className="py-3 px-3 text-right">Thao Tác</th>
+              <th className={padTh}>Học Sinh</th>
+              <th className={padTh}>Lớp</th>
+              {showAssignmentColumn && <th className={padTh}>Bài Kiểm Tra</th>}
+              <th className={padTh}>Điểm TN</th>
+              {hasAnyEssay && <th className={padTh}>Điểm TL</th>}
+              <th className={padTh}>Tổng Điểm</th>
+              <th className={padTh}>Xếp Loại</th>
+              <th className={padTh}>Lời Nhận Xét Của Cô</th>
+              <th className={`${padTh} text-right`}>Thao Tác</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
@@ -884,8 +955,9 @@ export const ExamGradingPage: React.FC = () => {
               const isPending = isSubmissionPending(sub);
               const isWaitingGrading = sub.status === 'waiting_teacher_grading';
               const maxTn = sub.max_score_tn !== undefined ? sub.max_score_tn : 10.0;
-              const maxTl = sub.max_score_tl !== undefined ? sub.max_score_tl : (sub.essay_question ? 3.0 : 0);
-              const maxTotal = sub.max_score || (maxTn + maxTl);
+              const maxTl =
+                sub.max_score_tl !== undefined ? sub.max_score_tl : sub.essay_question ? 3.0 : 0;
+              const maxTotal = sub.max_score || maxTn + maxTl;
               const perf = getPerformanceCategory(sub.score, maxTotal);
               const isSelected = selectedIds.includes(sub.id);
               const displayTime = formatSubmissionDisplayTime(sub);
@@ -897,20 +969,20 @@ export const ExamGradingPage: React.FC = () => {
                     isSelected ? 'bg-ocean-50/60' : ''
                   }`}
                 >
-                  <td className="py-3.5 px-3 text-center">
+                  <td className={`${padTd} text-center`}>
                     <input
                       type="checkbox"
                       checked={isSelected}
                       onChange={() => handleToggleSelectOne(sub.id)}
-                      className="w-4 h-4 text-ocean-600 rounded cursor-pointer"
+                      className="w-3.5 h-3.5 text-ocean-600 rounded cursor-pointer"
                     />
                   </td>
-                  <td className="py-3.5 px-3">
+                  <td className={padTd}>
                     <div className="font-bold text-slate-900 flex items-center gap-1.5 flex-wrap">
                       <span>{sub.student_name}</span>
                       {sub.is_late && (
                         <span
-                          className="px-2 py-0.5 rounded-md text-[9.5px] font-black bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-1"
+                          className="px-1.5 py-0.2 rounded text-[9px] font-black bg-rose-100 text-rose-800 border border-rose-300 flex items-center gap-0.5"
                           title={`Học sinh nộp bài sau thời hạn quy định ${sub.late_minutes ? `(${sub.late_minutes} phút)` : ''}`}
                         >
                           <AlertTriangle className="w-2.5 h-2.5 text-rose-600" />
@@ -918,79 +990,85 @@ export const ExamGradingPage: React.FC = () => {
                         </span>
                       )}
                       {isTestSubmission(sub) && (
-                        <span className="px-2 py-0.5 rounded-md text-[9px] font-black bg-amber-100 text-amber-900 border border-amber-300">
+                        <span className="px-1.5 py-0.2 rounded text-[8.5px] font-black bg-amber-100 text-amber-900 border border-amber-300">
                           🧪 Thi Thử
                         </span>
                       )}
                     </div>
-                    <div className="text-[10.5px] text-slate-400 font-mono flex items-center gap-1.5 mt-0.5">
+                    <div className="text-[10px] text-slate-400 font-mono flex items-center gap-1 mt-0.5">
                       <span>{sub.student_code}</span>
                       <span className="text-slate-300">•</span>
-                      <span className="text-slate-600 font-sans font-medium flex items-center gap-1">
-                        <Clock className="w-3 h-3 text-slate-400" />
+                      <span className="text-slate-500 font-sans font-medium flex items-center gap-0.5">
+                        <Clock className="w-2.5 h-2.5 text-slate-400" />
                         {displayTime}
                       </span>
                     </div>
                   </td>
-                  <td className="py-3.5 px-3 font-semibold text-slate-700">
-                    {sub.class_name}
+                  <td className={`${padTd} font-semibold text-slate-700`}>
+                    <span className="bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-md border border-slate-200">
+                      {sub.class_name}
+                    </span>
                   </td>
                   {showAssignmentColumn && (
-                    <td className="py-3.5 px-3 font-medium text-slate-800">
+                    <td
+                      className={`${padTd} font-medium text-slate-800 max-w-[180px] truncate`}
+                      title={sub.assignment_title}
+                    >
                       {sub.assignment_title}
                     </td>
                   )}
-                  <td className="py-3.5 px-3 font-bold text-ocean-700">
+                  <td className={`${padTd} font-bold text-ocean-700`}>
                     {sub.score_tn ?? sub.score} / {maxTn}đ
                   </td>
-                  {/* Cột Điểm Tự Luận: Hiển thị 0% Tự Luận (0đ) khi không có phần tự luận */}
-                  <td className="py-3.5 px-3">
-                    {maxTl > 0 ? (
-                      isWaitingGrading ? (
-                        <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
-                          Chờ chấm ({maxTl}đ)
-                        </span>
+                  {hasAnyEssay && (
+                    <td className={padTd}>
+                      {maxTl > 0 ? (
+                        isWaitingGrading ? (
+                          <span className="text-[10px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">
+                            Chờ chấm ({maxTl}đ)
+                          </span>
+                        ) : (
+                          <span className="font-bold text-purple-700">
+                            {sub.score_tl ?? 0} / {maxTl}đ
+                          </span>
+                        )
                       ) : (
-                        <span className="font-bold text-purple-700">
-                          {sub.score_tl ?? 0} / {maxTl}đ
-                        </span>
-                      )
-                    ) : (
-                      <span className="text-slate-600 font-bold bg-slate-100 px-2.5 py-1 rounded-lg text-[11px] border border-slate-200 inline-block">
-                        0% Tự luận (0đ)
-                      </span>
-                    )}
+                        <span className="text-slate-400 text-[10.5px]">0đ</span>
+                      )}
+                    </td>
+                  )}
+                  <td className={`${padTd} font-black text-slate-900`}>
+                    {sub.score}{' '}
+                    <span className="text-[10px] text-slate-400 font-normal">/ {maxTotal}đ</span>
                   </td>
-                  <td className="py-3.5 px-3 font-black text-sm text-slate-900">
-                    {sub.score} <span className="text-xs text-slate-400 font-normal">/ {maxTotal}đ</span>
-                  </td>
-                  {/* Cột Xếp Loại Màu Học Lực */}
-                  <td className="py-3.5 px-3">
+                  <td className={padTd}>
                     <span
-                      className={`font-bold px-2.5 py-1 rounded-full text-[11px] flex items-center gap-1 w-fit ${perf.badgeClass}`}
+                      className={`font-bold px-2 py-0.5 rounded-full text-[10.5px] flex items-center gap-1 w-fit ${perf.badgeClass}`}
                     >
                       <span>{perf.icon}</span>
                       <span>{perf.label}</span>
                     </span>
                   </td>
-                  <td className="py-3.5 px-3 max-w-xs">
+                  <td className={`${padTd} max-w-xs`}>
                     {sub.teacher_feedback_text ? (
-                      <span className="text-[11px] text-slate-700 line-clamp-2 italic bg-slate-100/70 px-2 py-1 rounded-lg">
+                      <span
+                        className="text-[11px] text-slate-700 line-clamp-1 italic bg-slate-100/70 px-2 py-0.5 rounded-md"
+                        title={sub.teacher_feedback_text}
+                      >
                         "{sub.teacher_feedback_text}"
                       </span>
                     ) : (
-                      <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-md">
+                      <span className="text-[10.5px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md">
                         ⏳ Chưa nhận xét
                       </span>
                     )}
                   </td>
-                  {/* Cột Thao Tác: Nhận xét + Nút Xóa bài nộp */}
-                  <td className="py-3.5 px-3 text-right">
-                    <div className="flex items-center justify-end gap-1.5">
+                  <td className={`${padTd} text-right`}>
+                    <div className="flex items-center justify-end gap-1">
                       <button
                         type="button"
                         onClick={() => openGradingModal(sub)}
-                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-xs cursor-pointer ${
+                        className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition shadow-2xs cursor-pointer ${
                           isPending
                             ? 'bg-gradient-to-r from-ocean-600 to-teal-600 hover:from-ocean-700 hover:to-teal-700 text-white'
                             : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
@@ -999,14 +1077,13 @@ export const ExamGradingPage: React.FC = () => {
                         {isPending ? 'Nhận Xét' : 'Xem Lời Phê'}
                       </button>
 
-                      {/* Nút Xóa bài nộp này */}
                       <button
                         type="button"
                         onClick={() => handleDeleteSingle(sub.id, sub.student_name)}
-                        className="p-1.5 rounded-xl text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 transition cursor-pointer"
+                        className="p-1 rounded-lg text-rose-600 hover:text-rose-700 hover:bg-rose-50 border border-rose-200 transition cursor-pointer"
                         title="Xóa bài nộp này để giải phóng dung lượng"
                       >
-                        <Trash2 className="w-4 h-4" />
+                        <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
                   </td>
@@ -1247,6 +1324,64 @@ export const ExamGradingPage: React.FC = () => {
         </div>
       </div>
 
+      {/* 2.2. THANH CHỌN LỚP NHANH TOÀN CỤC (GLOBAL CLASS PILLS SELECTOR) */}
+      <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs space-y-2">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center gap-1.5 font-black text-slate-700">
+            <Users className="w-4 h-4 text-ocean-600" />
+            <span>Lọc Nhanh Theo Lớp Học ({classesList.length} Lớp):</span>
+          </div>
+          <span className="text-[11px] text-slate-400">
+            Bấm 1 click để chỉ xem học sinh của đúng lớp đó
+          </span>
+        </div>
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin flex-wrap sm:flex-nowrap">
+          <button
+            type="button"
+            onClick={() => setClassFilter('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer shrink-0 ${
+              classFilter === 'all'
+                ? 'bg-ocean-600 text-white shadow-xs ring-2 ring-ocean-200'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
+            }`}
+          >
+            🏫 Tất Cả ({classesList.length} Lớp)
+          </button>
+          {classesList.map((c) => {
+            const isSelected = classFilter === c.name;
+            const classSubCount = submissions.filter((s) => s.class_name === c.name).length;
+            return (
+              <button
+                key={c.id || c.name}
+                type="button"
+                onClick={() => {
+                  setClassFilter(c.name);
+                  if (c.grade && gradeFilter !== 'all' && gradeFilter !== c.grade) {
+                    setGradeFilter('all');
+                  }
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
+                  isSelected
+                    ? 'bg-ocean-600 text-white shadow-xs ring-2 ring-ocean-200 font-black'
+                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
+                }`}
+              >
+                <span>{c.name}</span>
+                {classSubCount > 0 && (
+                  <span
+                    className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-black ${
+                      isSelected ? 'bg-white/30 text-white' : 'bg-ocean-100 text-ocean-800'
+                    }`}
+                  >
+                    {classSubCount}
+                  </span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* 3. TAB PHÂN LOẠI TRẠNG THÁI VÀ CHUYỂN ĐỔI CHẾ ĐỘ XEM */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-2">
         <div className="flex items-center gap-2 overflow-x-auto">
@@ -1317,35 +1452,61 @@ export const ExamGradingPage: React.FC = () => {
           </button>
         </div>
 
-        {/* Nút chuyển đổi Chế độ xem: Gom nhóm vs Bảng tổng hợp */}
-        <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200 self-start sm:self-auto shrink-0">
+        {/* Nút chuyển đổi Chế độ xem: Gom nhóm vs Bảng tổng hợp & Đổi mật độ hiển thị */}
+        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0 flex-wrap">
+          {/* Nút đổi mật độ: Gọn nhẹ / Tiêu chuẩn */}
           <button
             type="button"
-            onClick={() => setViewMode('grouped')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
-              viewMode === 'grouped'
-                ? 'bg-white text-ocean-800 shadow-xs ring-1 ring-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
+            onClick={() => setIsCompactDensity((prev) => !prev)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition cursor-pointer ${
+              isCompactDensity
+                ? 'bg-ocean-50 border-ocean-300 text-ocean-800'
+                : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
             }`}
-            title="Xếp kết quả học sinh theo từng đề thi riêng biệt"
+            title="Bật/Tắt chế độ hiển thị siêu gọn nhẹ để nhìn được nhiều học sinh trên 1 màn hình"
           >
-            <LayoutGrid className="w-3.5 h-3.5 text-ocean-600" />
-            <span>Xếp Theo Đề Thi</span>
+            {isCompactDensity ? (
+              <>
+                <Minimize2 className="w-3.5 h-3.5 text-ocean-600" />
+                <span>Mật Độ: Gọn Nhẹ</span>
+              </>
+            ) : (
+              <>
+                <Maximize2 className="w-3.5 h-3.5 text-slate-500" />
+                <span>Mật Độ: Tiêu Chuẩn</span>
+              </>
+            )}
           </button>
 
-          <button
-            type="button"
-            onClick={() => setViewMode('table')}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
-              viewMode === 'table'
-                ? 'bg-white text-ocean-800 shadow-xs ring-1 ring-slate-200'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-            title="Xem toàn bộ bài nộp trên một bảng duy nhất"
-          >
-            <List className="w-3.5 h-3.5 text-slate-600" />
-            <span>Bảng Tổng Hợp</span>
-          </button>
+          <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-2xl border border-slate-200">
+            <button
+              type="button"
+              onClick={() => setViewMode('grouped')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                viewMode === 'grouped'
+                  ? 'bg-white text-ocean-800 shadow-xs ring-1 ring-slate-200'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Xếp kết quả học sinh theo từng đề thi riêng biệt"
+            >
+              <LayoutGrid className="w-3.5 h-3.5 text-ocean-600" />
+              <span>Xếp Theo Đề Thi</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setViewMode('table')}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer ${
+                viewMode === 'table'
+                  ? 'bg-white text-ocean-800 shadow-xs ring-1 ring-slate-200'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+              title="Xem toàn bộ bài nộp trên một bảng duy nhất"
+            >
+              <List className="w-3.5 h-3.5 text-slate-600" />
+              <span>Bảng Tổng Hợp</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -1484,8 +1645,38 @@ export const ExamGradingPage: React.FC = () => {
 
       {/* 5. HIỂN THỊ DANH SÁCH BÀI NỘP THEO CHẾ ĐỘ XEM */}
       {viewMode === 'grouped' ? (
-        /* CHẾ ĐỘ GOM NHÓM THEO TỪNG ĐỀ THI */
-        <div className="space-y-6">
+        /* CHẾ ĐỘ GOM NHÓM THEO TỪNG ĐỀ THI VỚI KHUNG THU GỌN VÀ TAB PHÂN LỚP */
+        <div className="space-y-4">
+          {/* Thanh công cụ mở rộng / thu gọn tất cả thẻ đề thi */}
+          <div className="flex items-center justify-between text-xs px-1 text-slate-500">
+            <div className="font-bold flex items-center gap-1.5">
+              <span>Đang hiển thị {filteredAssignmentsToDisplay.length} đề thi</span>
+              <span>•</span>
+              <span className="text-ocean-700 font-semibold">
+                {expandedAssignmentIds.size} đề đang mở rộng
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={handleExpandAll}
+                className="flex items-center gap-1 text-ocean-700 hover:text-ocean-900 font-bold hover:underline cursor-pointer"
+              >
+                <FolderOpen className="w-3.5 h-3.5" />
+                <span>Mở Rộng Tất Cả</span>
+              </button>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={handleCollapseAll}
+                className="flex items-center gap-1 text-slate-600 hover:text-slate-900 font-bold hover:underline cursor-pointer"
+              >
+                <Folder className="w-3.5 h-3.5" />
+                <span>Thu Gọn Tất Cả</span>
+              </button>
+            </div>
+          </div>
+
           {filteredAssignmentsToDisplay.length === 0 ? (
             <div className="bg-white rounded-3xl p-12 text-center text-slate-400 italic text-xs border border-slate-200">
               Không tìm thấy đề thi nào phù hợp với bộ lọc hiện tại.
@@ -1497,42 +1688,83 @@ export const ExamGradingPage: React.FC = () => {
                 (s) => s.assignment_id === asg.id
               );
               const allAsgSubs = submissions.filter((s) => s.assignment_id === asg.id);
+              const isExpanded = expandedAssignmentIds.has(asg.id);
+
+              // Danh sách các lớp học có bài nộp trong đề thi này
+              const asgClasses = Array.from(
+                new Set(asgFilteredSubs.map((s) => s.class_name).filter(Boolean))
+              ).sort();
+
+              const currentSubClass = assignmentClassSubFilter[asg.id] || 'all';
+
+              // Lọc tiếp bài nộp theo Tab lớp con đang chọn
+              const displayedSubs =
+                currentSubClass === 'all'
+                  ? asgFilteredSubs
+                  : asgFilteredSubs.filter((s) => s.class_name === currentSubClass);
+
+              const asgHasEssay = displayedSubs.some(
+                (s) => (s.max_score_tl !== undefined ? s.max_score_tl > 0 : Boolean(s.essay_question))
+              );
 
               return (
                 <div
                   key={asg.id}
-                  className="bg-white rounded-3xl p-5 border border-slate-200 shadow-xs space-y-4"
+                  className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden transition-all duration-200"
                 >
-                  {/* Header Khối Đề Thi */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-100">
-                    <div className="flex items-start gap-3">
-                      <div className="w-10 h-10 rounded-2xl bg-ocean-50 text-ocean-700 flex items-center justify-center shrink-0 border border-ocean-200">
-                        <BookOpen className="w-5 h-5" />
+                  {/* Header Khối Đề Thi Dạng Accordion Thu Gọn Siêu Mỏng */}
+                  <div
+                    onClick={() => toggleExpandAssignment(asg.id)}
+                    className={`p-3.5 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer transition select-none ${
+                      isExpanded
+                        ? 'bg-slate-50/90 border-b border-slate-200'
+                        : 'bg-white hover:bg-slate-50/80'
+                    }`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border transition ${
+                          isExpanded
+                            ? 'bg-ocean-600 text-white border-ocean-700 shadow-xs'
+                            : 'bg-ocean-50 text-ocean-700 border-ocean-200'
+                        }`}
+                      >
+                        {isExpanded ? (
+                          <FolderOpen className="w-5 h-5" />
+                        ) : (
+                          <Folder className="w-5 h-5" />
+                        )}
                       </div>
+
                       <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-black text-slate-900 text-base">
+                          <h3 className="font-black text-slate-900 text-sm sm:text-base hover:text-ocean-700 transition">
                             {asg.title}
                           </h3>
-                          <span className="text-[10.5px] font-black uppercase text-ocean-700 bg-ocean-100/80 px-2 py-0.5 rounded-md">
+                          <span className="text-[10px] font-black uppercase text-ocean-700 bg-ocean-100/80 px-2 py-0.5 rounded-md">
                             Khối {asg.grade}
                           </span>
+                          {!asgHasEssay && (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                              100% Trắc nghiệm
+                            </span>
+                          )}
                         </div>
-                        <div className="text-xs text-slate-500 mt-0.5 flex items-center gap-3 flex-wrap">
+
+                        <div className="text-[11px] text-slate-500 mt-0.5 flex items-center gap-2.5 flex-wrap">
                           <span>
-                            Tổng bài nộp:{' '}
-                            <strong className="text-slate-800">{allAsgSubs.length}</strong>
+                            Tổng nộp: <strong className="text-slate-800">{allAsgSubs.length}</strong> bài
                           </span>
                           <span>•</span>
                           <span>
-                            Điểm TB:{' '}
-                            <strong className="text-slate-800">{asg.avg_score}đ</strong>
+                            ĐTB: <strong className="text-slate-800">{asg.avg_score}đ</strong>
                           </span>
                           {asg.pending_count > 0 && (
                             <>
                               <span>•</span>
-                              <span className="text-amber-800 font-bold bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
-                                ⏳ {asg.pending_count} bài chờ chấm
+                              <span className="text-amber-800 font-bold bg-amber-100/80 px-2 py-0.2 rounded-md border border-amber-300 flex items-center gap-1">
+                                <span className="w-1.5 h-1.5 rounded-full bg-amber-600 animate-pulse" />
+                                {asg.pending_count} bài chờ chấm
                               </span>
                             </>
                           )}
@@ -1543,18 +1775,116 @@ export const ExamGradingPage: React.FC = () => {
                     <div className="flex items-center gap-2 self-end sm:self-auto">
                       <button
                         type="button"
-                        onClick={() => handleExportExcelForAssignment(asg.title, allAsgSubs)}
-                        className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-ocean-50 text-slate-700 hover:text-ocean-800 text-xs font-bold border border-slate-200 transition cursor-pointer shadow-2xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExportExcelForAssignment(asg.title, allAsgSubs);
+                        }}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white hover:bg-ocean-50 text-slate-700 hover:text-ocean-800 text-xs font-bold border border-slate-200 transition cursor-pointer shadow-2xs"
                         title="Xuất bảng điểm Excel cho bài kiểm tra này"
                       >
                         <Download className="w-3.5 h-3.5 text-ocean-600" />
                         <span>Xuất Excel Đề Này</span>
                       </button>
+
+                      <div className="flex items-center gap-1 text-xs font-bold text-ocean-700 bg-ocean-50/70 border border-ocean-200 px-2.5 py-1.5 rounded-xl">
+                        <span>{isExpanded ? 'Thu gọn' : 'Mở rộng'}</span>
+                        {isExpanded ? (
+                          <ChevronUp className="w-4 h-4" />
+                        ) : (
+                          <ChevronDown className="w-4 h-4" />
+                        )}
+                      </div>
                     </div>
                   </div>
 
-                  {/* Bảng Học Sinh Trong Đề Thi Này */}
-                  {renderSubmissionTable(asgFilteredSubs, false)}
+                  {/* Nội Dung Chi Tiết Khi Mở Rộng Thẻ Đề Thi */}
+                  {isExpanded && (
+                    <div className="p-4 space-y-3 bg-white animate-in fade-in duration-200">
+                      {/* Dải Tab Chọn Lớp Con Trong Đề Này (Nếu đề có nhiều lớp nộp) */}
+                      {asgClasses.length > 1 && (
+                        <div className="flex items-center justify-between gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 flex-wrap">
+                          <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-thin">
+                            <span className="text-[11px] font-bold text-slate-500 px-1">
+                              Xem lớp:
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAssignmentClassSubFilter((prev) => ({
+                                  ...prev,
+                                  [asg.id]: 'all',
+                                }))
+                              }
+                              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer shrink-0 ${
+                                currentSubClass === 'all'
+                                  ? 'bg-ocean-600 text-white shadow-2xs'
+                                  : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-200'
+                              }`}
+                            >
+                              Tất Cả Các Lớp ({asgFilteredSubs.length})
+                            </button>
+                            {asgClasses.map((cls) => {
+                              const isSubClassSelected = currentSubClass === cls;
+                              const countInCls = asgFilteredSubs.filter(
+                                (s) => s.class_name === cls
+                              ).length;
+                              return (
+                                <button
+                                  key={cls}
+                                  type="button"
+                                  onClick={() =>
+                                    setAssignmentClassSubFilter((prev) => ({
+                                      ...prev,
+                                      [asg.id]: cls,
+                                    }))
+                                  }
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1 ${
+                                    isSubClassSelected
+                                      ? 'bg-ocean-600 text-white shadow-2xs font-black'
+                                      : 'bg-white text-slate-700 hover:bg-slate-200 border border-slate-200'
+                                  }`}
+                                >
+                                  <span>Lớp {cls}</span>
+                                  <span
+                                    className={`text-[10px] px-1 rounded-full ${
+                                      isSubClassSelected
+                                        ? 'bg-white/30 text-white'
+                                        : 'bg-slate-100 text-slate-500'
+                                    }`}
+                                  >
+                                    {countInCls}
+                                  </span>
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {currentSubClass !== 'all' && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const classSubs = allAsgSubs.filter(
+                                  (s) => s.class_name === currentSubClass
+                                );
+                                handleExportExcelForAssignment(
+                                  `${asg.title}_Lop_${currentSubClass}`,
+                                  classSubs
+                                );
+                              }}
+                              className="text-[11px] font-bold text-emerald-800 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 px-2.5 py-1 rounded-lg flex items-center gap-1 transition cursor-pointer"
+                              title={`Xuất riêng bảng điểm của lớp ${currentSubClass}`}
+                            >
+                              <Download className="w-3 h-3 text-emerald-600" />
+                              <span>Xuất Excel Lớp {currentSubClass}</span>
+                            </button>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Bảng Học Sinh Trong Đề Thi Này */}
+                      {renderSubmissionTable(displayedSubs, false, asgHasEssay)}
+                    </div>
+                  )}
                 </div>
               );
             })
