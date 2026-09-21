@@ -164,6 +164,14 @@ export function isTestSubmission(sub: any): boolean {
   );
 }
 
+// Xác định bài nộp cần được nhận xét / chấm điểm
+export function isSubmissionPending(sub: any): boolean {
+  if (!sub) return false;
+  const hasFeedback = Boolean(sub.teacher_feedback_text && sub.teacher_feedback_text.trim().length > 0);
+  const isWaitingGrading = sub.status === 'waiting_teacher_grading';
+  return isWaitingGrading || !hasFeedback;
+}
+
 export const ExamGradingPage: React.FC = () => {
   const [searchParams] = useSearchParams();
 
@@ -481,13 +489,6 @@ export const ExamGradingPage: React.FC = () => {
     setSelectedSubmission(sub);
     setEssayScore(sub.score_tl || 0);
     setFeedbackText(sub.teacher_feedback_text || '');
-  };
-
-  // Xác định bài nộp cần được nhận xét / chấm điểm
-  const isSubmissionPending = (sub: any) => {
-    const hasFeedback = Boolean(sub.teacher_feedback_text && sub.teacher_feedback_text.trim().length > 0);
-    const isWaitingGrading = sub.status === 'waiting_teacher_grading';
-    return isWaitingGrading || !hasFeedback;
   };
 
   // Tổng số lượng bài theo từng tab (Khớp 100% với đợt kiểm tra và lớp học đang chọn)
