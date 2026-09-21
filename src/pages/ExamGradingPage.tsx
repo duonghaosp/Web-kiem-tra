@@ -42,10 +42,14 @@ import {
   Maximize2,
   Minimize2,
   Folder,
+  BarChart3,
+  UserX,
+  Copy,
+  TrendingUp,
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
-import { StudentResult, Question, ClassItem } from '../types/database';
-import { INITIAL_CLASSES } from '../data/studentsData';
+import { StudentResult, Question, ClassItem, Profile } from '../types/database';
+import { INITIAL_CLASSES, getStoredStudents } from '../data/studentsData';
 import { LatexRenderer } from '../components/common/LatexRenderer';
 import { triggerCelebration } from '../lib/gamification';
 import { BadgeList } from '../components/common/BadgeList';
@@ -181,7 +185,7 @@ export function getClassGradeFromName(name: string): number | null {
 }
 
 // So sánh tương đương giữa 2 tên lớp học (VD: "Lớp 9A1" tương đương "9A1")
-export function isSameClass(clsA: string, clsB: string): boolean {
+export function isSameClass(clsA?: string | null, clsB?: string | null): boolean {
   if (!clsA || !clsB) return false;
   if (clsA === clsB) return true;
   const cleanA = clsA.toLowerCase().replace(/lớp\s*/i, '').trim();
@@ -290,6 +294,25 @@ export const ExamGradingPage: React.FC = () => {
     } catch (e) {}
     return INITIAL_CLASSES;
   });
+
+  // Danh sách đầy đủ toàn bộ học sinh các lớp trong hệ thống để đối chiếu vắng / chưa nộp
+  const [allStudentsList] = useState<Profile[]>(() => {
+    try {
+      return getStoredStudents();
+    } catch (e) {
+      return [];
+    }
+  });
+
+  // Dữ liệu mở Modal danh sách học sinh chưa nộp bài
+  const [unsubmittedModalData, setUnsubmittedModalData] = useState<{
+    assignmentTitle: string;
+    className: string;
+    students: { code: string; name: string; class_name: string }[];
+  } | null>(null);
+
+  // Thông báo toast khi đã sao chép lời nhắc Zalo
+  const [copiedToast, setCopiedToast] = useState<string | null>(null);
 
   // Tab phân loại: 'pending' (Cần nhận xét), 'graded' (Đã xong), 'all' (Tất cả)
   const [activeTab, setActiveTab] = useState<'pending' | 'graded' | 'all'>('pending');
@@ -464,6 +487,142 @@ export const ExamGradingPage: React.FC = () => {
     XLSX.utils.book_append_sheet(workbook, worksheet, 'BangDiem');
     const cleanTitle = (asgTitle || 'BangDiem').replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1E00-\u1EFF]/g, '_');
     const fileName = `BangDiem_${cleanTitle}_${new Date().toLocaleDateString('vi-VN').replace(/\//g, '-')}.xlsx`;
+    XLSX.writeFile(workbook, fileName);
+  };
+
+  // Tính toán bộ chỉ số thống kê điểm và học sinh chưa nộp cho 1 đề thi và 1 lớp cụ thể (Gợi ý 3 & 4)
+  const computeAssignmentClassStats = (asg: any, targetClass: string, asgSubs: any[]) => {
+    // 1. Xác định danh sách học sinh thuộc lớp/khối này
+    let targetStudents: any[] = [];
+    if (targetClass !== 'all') {
+      targetStudents = allStudentsList.filter((st) => isSameClass(st.class_name, targetClass));
+    } else {
+      const classesInAsg = Array.from(
+        new Set(asgSubs.map((s) => s.class_name).filter(Boolean))
+      );
+      if (classesInAsg.length > 0) {
+        targetStudents = allStudentsList.filter((st) =>
+          classesInAsg.some((cls) => isSameClass(st.class_name, cls))
+        );
+      } else if (asg.grade) {
+        targetStudents = allStudentsList.filter((st) => Number(st.grade) === Number(asg.grade));
+      }
+    }
+
+    // 2. Lọc danh sách bài nộp của lớp/khối này
+    const classSubs = targetClass === 'all'
+      ? asgSubs
+      : asgSubs.filter((s) => isSameClass(s.class_name, targetClass));
+
+    // 3. Tìm học sinh chưa nộp bài
+    const submittedCodes = new Set(
+      classSubs.map((s) => (s.student_code || '').trim().toLowerCase())
+    );
+    const submittedNames = new Set(
+      classSubs.map((s) => (s.student_name || '').trim().toLowerCase())
+    );
+
+    const unsubmittedStudents = targetStudents
+      .filter((st) => {
+        const code = (st.student_code || '').trim().toLowerCase();
+        const name = (st.full_name || '').trim().toLowerCase();
+        return !submittedCodes.has(code) && !submittedNames.has(name);
+      })
+      .map((st) => ({
+        code: st.student_code || '---',
+        name: st.full_name || 'Học sinh',
+        class_name: st.class_name || targetClass,
+      }));
+
+    const totalStudents = Math.max(targetStudents.length, classSubs.length);
+    const submittedCount = classSubs.length;
+    const unsubmittedCount = unsubmittedStudents.length;
+    const submissionRate = totalStudents > 0 ? Math.round((submittedCount / totalStudents) * 100) : 100;
+
+    // 4. Tính toán điểm số
+    const scores = classSubs.map((s) => Number(s.score) || 0);
+    const avgScore = scores.length > 0
+      ? (scores.reduce((a, b) => a + b, 0) / scores.length).toFixed(1)
+      : '0';
+    const maxScore = scores.length > 0 ? Math.max(...scores).toFixed(1) : '0';
+    const minScore = scores.length > 0 ? Math.min(...scores).toFixed(1) : '0';
+
+    // 5. Phân bố học lực
+    let excellentCount = 0; // >= 8.0
+    let goodCount = 0;      // 6.5 - 7.9
+    let averageCount = 0;   // 5.0 - 6.4
+    let poorCount = 0;      // < 5.0
+
+    classSubs.forEach((s) => {
+      const max = s.max_score || 10;
+      const normalized = max > 0 ? (Number(s.score) / max) * 10 : 0;
+      if (normalized >= 8.0) excellentCount++;
+      else if (normalized >= 6.5) goodCount++;
+      else if (normalized >= 5.0) averageCount++;
+      else poorCount++;
+    });
+
+    return {
+      totalStudents,
+      submittedCount,
+      unsubmittedCount,
+      submissionRate,
+      unsubmittedStudents,
+      avgScore,
+      maxScore,
+      minScore,
+      excellentCount,
+      goodCount,
+      averageCount,
+      poorCount,
+    };
+  };
+
+  // Sao chép tin nhắn mẫu nhắc nhở nộp bài để gửi vào nhóm Zalo lớp (Gợi ý 3)
+  const handleCopyZaloReminder = (assignmentTitle: string, className: string, students: any[]) => {
+    if (students.length === 0) return;
+
+    const studentListText = students
+      .map((s, index) => `${index + 1}. ${s.code} - ${s.name} (${s.class_name})`)
+      .join('\n');
+
+    const text = `📢 [THÔNG BÁO NHẮC NHỞ NỘP BÀI KIỂM TRA ĐỊA LÍ]
+📚 Bài kiểm tra: ${assignmentTitle}
+🏫 Lớp: ${className}
+⏳ Tình trạng: Còn ${students.length} học sinh chưa nộp bài
+
+Danh sách học sinh chưa hoàn thành bài kiểm tra:
+${studentListText}
+
+👉 Các em học sinh vui lòng đăng nhập vào trang web để hoàn thành và nộp bài sớm nhé!`;
+
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedToast(`Đã sao chép danh sách ${students.length} em chưa nộp để gửi Zalo!`);
+      setTimeout(() => setCopiedToast(null), 4000);
+    }).catch(() => {
+      alert(`Đã chuẩn bị nội dung nhắc nhở Zalo cho ${students.length} em!`);
+    });
+  };
+
+  // Xuất file Excel danh sách học sinh chưa nộp bài (Gợi ý 3)
+  const handleExportUnsubmittedExcel = (assignmentTitle: string, className: string, students: any[]) => {
+    if (students.length === 0) return;
+
+    const data = students.map((s, index) => ({
+      'STT': index + 1,
+      'Mã Học Sinh': s.code,
+      'Họ và Tên': s.name,
+      'Lớp': s.class_name,
+      'Bài Kiểm Tra': assignmentTitle,
+      'Trạng Thái': 'Chưa nộp bài / Vắng',
+    }));
+
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'ChuaNopBai');
+    const cleanTitle = (assignmentTitle || 'ChuaNop').replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1E00-\u1EFF]/g, '_');
+    const cleanClass = className.replace(/[^a-zA-Z0-9_\u00C0-\u024F\u1E00-\u1EFF]/g, '_');
+    const fileName = `DanhSach_ChuaNop_${cleanTitle}_${cleanClass}_${new Date().toLocaleDateString('vi-VN').replace(/\//g, '-')}.xlsx`;
     XLSX.writeFile(workbook, fileName);
   };
 
@@ -1966,6 +2125,152 @@ export const ExamGradingPage: React.FC = () => {
                         </div>
                       )}
 
+                      {/* BẢNG THỐNG KÊ ĐIỂM NHANH & NÚT XEM HỌC SINH CHƯA NỘP (GỢI Ý 3 & 4) */}
+                      {(() => {
+                        const stats = computeAssignmentClassStats(
+                          asg,
+                          currentSubClass,
+                          asgFilteredSubs
+                        );
+                        const targetLabel =
+                          currentSubClass === 'all' ? 'Toàn bộ các lớp' : currentSubClass;
+                        const excelRate =
+                          stats.submittedCount > 0
+                            ? Math.round((stats.excellentCount / stats.submittedCount) * 100)
+                            : 0;
+                        const goodRate =
+                          stats.submittedCount > 0
+                            ? Math.round((stats.goodCount / stats.submittedCount) * 100)
+                            : 0;
+                        const avgRate =
+                          stats.submittedCount > 0
+                            ? Math.round((stats.averageCount / stats.submittedCount) * 100)
+                            : 0;
+                        const poorRate =
+                          stats.submittedCount > 0
+                            ? Math.round((stats.poorCount / stats.submittedCount) * 100)
+                            : 0;
+
+                        return (
+                          <div className="bg-gradient-to-r from-slate-50 via-sky-50/40 to-emerald-50/30 rounded-2xl p-3.5 border border-slate-200/90 shadow-2xs space-y-3">
+                            {/* Hàng 1: Tiến độ nộp bài & Nút danh sách chưa nộp (Gợi ý 3) */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-2.5 border-b border-slate-200/70">
+                              <div className="flex items-center gap-2.5">
+                                <div className="w-8 h-8 rounded-xl bg-ocean-100 text-ocean-700 flex items-center justify-center font-bold text-xs shrink-0">
+                                  <Users className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <div className="text-xs font-black text-slate-800 flex items-center gap-2 flex-wrap">
+                                    <span>Tiến Độ Nộp Bài ({targetLabel}):</span>
+                                    <span className="text-ocean-700 font-bold bg-ocean-50 border border-ocean-200 px-2 py-0.2 rounded-md">
+                                      {stats.submittedCount}/{stats.totalStudents} HS ({stats.submissionRate}%)
+                                    </span>
+                                  </div>
+                                  {/* Thanh tiến độ trực quan */}
+                                  <div className="w-48 sm:w-60 h-2 bg-slate-200 rounded-full overflow-hidden mt-1">
+                                    <div
+                                      className={`h-full rounded-full transition-all duration-500 ${
+                                        stats.submissionRate >= 100
+                                          ? 'bg-emerald-500'
+                                          : stats.submissionRate >= 70
+                                          ? 'bg-ocean-500'
+                                          : 'bg-amber-500'
+                                      }`}
+                                      style={{ width: `${Math.min(100, stats.submissionRate)}%` }}
+                                    />
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Nút Xem Danh Sách Học Sinh Chưa Nộp & Nhắc Zalo (Gợi ý 3) */}
+                              <div className="flex items-center gap-2 self-end sm:self-auto flex-wrap">
+                                {stats.unsubmittedCount > 0 ? (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setUnsubmittedModalData({
+                                        assignmentTitle: asg.title,
+                                        className: targetLabel,
+                                        students: stats.unsubmittedStudents,
+                                      })
+                                    }
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-black transition cursor-pointer shadow-2xs active:scale-95"
+                                    title="Bấm để xem danh sách và sao chép lời nhắc Zalo gửi nhóm lớp"
+                                  >
+                                    <UserX className="w-3.5 h-3.5 text-amber-700" />
+                                    <span>⚠️ Còn {stats.unsubmittedCount} HS Chưa Nộp [Xem & Nhắc Zalo]</span>
+                                  </button>
+                                ) : (
+                                  <span className="text-emerald-700 font-bold bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-xl text-xs flex items-center gap-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span>100% Học Sinh Đã Nộp Đủ</span>
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Hàng 2: Chỉ số điểm số & Phổ điểm (Gợi ý 4) */}
+                            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-7 gap-2 text-center text-xs">
+                              {/* ĐTB */}
+                              <div className="p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                                <div className="text-[10.5px] font-bold text-slate-500">Điểm TB Lớp</div>
+                                <div className="text-sm font-black text-ocean-700 mt-0.5">{stats.avgScore}đ</div>
+                              </div>
+                              {/* Cao nhất */}
+                              <div className="p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                                <div className="text-[10.5px] font-bold text-slate-500">Cao Nhất</div>
+                                <div className="text-sm font-black text-emerald-600 mt-0.5">{stats.maxScore}đ</div>
+                              </div>
+                              {/* Thấp nhất */}
+                              <div className="p-2 rounded-xl bg-white border border-slate-200 shadow-2xs">
+                                <div className="text-[10.5px] font-bold text-slate-500">Thấp Nhất</div>
+                                <div className="text-sm font-black text-rose-600 mt-0.5">{stats.minScore}đ</div>
+                              </div>
+                              {/* Giỏi */}
+                              <div className="p-2 rounded-xl bg-emerald-50/70 border border-emerald-200">
+                                <div className="text-[10.5px] font-bold text-emerald-800">🌟 Giỏi (8-10đ)</div>
+                                <div className="text-xs font-black text-emerald-900 mt-0.5">
+                                  {stats.excellentCount}{' '}
+                                  <span className="text-[10px] font-normal text-emerald-700">
+                                    ({excelRate}%)
+                                  </span>
+                                </div>
+                              </div>
+                              {/* Khá */}
+                              <div className="p-2 rounded-xl bg-sky-50/70 border border-sky-200">
+                                <div className="text-[10.5px] font-bold text-sky-800">👍 Khá (6.5-7.9đ)</div>
+                                <div className="text-xs font-black text-sky-900 mt-0.5">
+                                  {stats.goodCount}{' '}
+                                  <span className="text-[10px] font-normal text-sky-700">
+                                    ({goodRate}%)
+                                  </span>
+                                </div>
+                              </div>
+                              {/* TB */}
+                              <div className="p-2 rounded-xl bg-amber-50/70 border border-amber-200">
+                                <div className="text-[10.5px] font-bold text-amber-800">⚠️ TB (5.0-6.4đ)</div>
+                                <div className="text-xs font-black text-amber-900 mt-0.5">
+                                  {stats.averageCount}{' '}
+                                  <span className="text-[10px] font-normal text-amber-700">
+                                    ({avgRate}%)
+                                  </span>
+                                </div>
+                              </div>
+                              {/* Cần cố gắng */}
+                              <div className="p-2 rounded-xl bg-rose-50/70 border border-rose-200">
+                                <div className="text-[10.5px] font-bold text-rose-800">❗ Cố Gắng (&lt;5đ)</div>
+                                <div className="text-xs font-black text-rose-900 mt-0.5">
+                                  {stats.poorCount}{' '}
+                                  <span className="text-[10px] font-normal text-rose-700">
+                                    ({poorRate}%)
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Bảng Học Sinh Trong Đề Thi Này */}
                       {renderSubmissionTable(displayedSubs, false, asgHasEssay)}
                     </div>
@@ -2262,13 +2567,136 @@ export const ExamGradingPage: React.FC = () => {
                     disabled={isSaving}
                     className="flex items-center gap-1.5 px-6 py-2.5 bg-gradient-to-r from-ocean-600 to-teal-600 hover:from-ocean-700 hover:to-teal-700 active:scale-95 text-white text-xs font-black rounded-xl shadow-md transition disabled:opacity-50 cursor-pointer"
                   >
-                    <Send className="w-4 h-4" />
-                    {isSaving ? 'Đang Lưu...' : 'Lưu Điểm & Gửi Nhận Xét'}
+                    <Save className="w-4 h-4" />
+                    <span>{isSaving ? 'Đang Lưu...' : 'Lưu Điểm & Lời Phê'}</span>
                   </button>
                 </div>
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* 7. MODAL DANH SÁCH HỌC SINH CHƯA NỘP BÀI & NHẮC ZALO (GỢI Ý 3) */}
+      {unsubmittedModalData && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/60 backdrop-blur-xs overflow-y-auto">
+          <div className="bg-white rounded-3xl max-w-xl w-full p-5 sm:p-6 shadow-2xl border border-slate-100 space-y-4 my-auto max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center border border-rose-200">
+                  <UserX className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="font-black text-slate-900 text-base">
+                    Danh Sách Chưa Nộp Bài ({unsubmittedModalData.students.length} Học Sinh)
+                  </h3>
+                  <p className="text-xs text-slate-500 font-medium">
+                    {unsubmittedModalData.assignmentTitle} • {unsubmittedModalData.className}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setUnsubmittedModalData(null)}
+                className="text-xs font-bold text-slate-400 hover:text-slate-600 px-2 py-1 rounded-lg hover:bg-slate-100 cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+
+            {/* Action Buttons Bar */}
+            <div className="flex items-center justify-between gap-2 p-2.5 bg-amber-50/80 rounded-2xl border border-amber-200 flex-wrap">
+              <div className="text-xs font-bold text-amber-900 flex items-center gap-1.5">
+                <span>📢 Nhắc nhở nộp bài nhanh:</span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleCopyZaloReminder(
+                      unsubmittedModalData.assignmentTitle,
+                      unsubmittedModalData.className,
+                      unsubmittedModalData.students
+                    )
+                  }
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 bg-gradient-to-r from-ocean-600 to-teal-600 hover:from-ocean-700 hover:to-teal-700 text-white text-xs font-black rounded-xl shadow-xs transition cursor-pointer active:scale-95"
+                  title="Sao chép tin nhắn nhắc nhở để dán vào nhóm Zalo của lớp"
+                >
+                  <Copy className="w-3.5 h-3.5" />
+                  <span>Sao Chép Để Gửi Zalo Lớp 📋</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    handleExportUnsubmittedExcel(
+                      unsubmittedModalData.assignmentTitle,
+                      unsubmittedModalData.className,
+                      unsubmittedModalData.students
+                    )
+                  }
+                  className="flex items-center gap-1 px-3 py-1.5 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold border border-slate-300 rounded-xl transition cursor-pointer"
+                  title="Tải danh sách học sinh chưa nộp dưới dạng file Excel"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Tải Excel</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Danh Sách Học Sinh Dạng Bảng */}
+            <div className="flex-1 overflow-y-auto border border-slate-200 rounded-2xl max-h-72">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-600 font-black uppercase tracking-wider border-b border-slate-200 sticky top-0">
+                  <tr>
+                    <th className="py-2.5 px-3 w-12 text-center">STT</th>
+                    <th className="py-2.5 px-3">Mã Học Sinh</th>
+                    <th className="py-2.5 px-3">Họ và Tên</th>
+                    <th className="py-2.5 px-3">Lớp</th>
+                    <th className="py-2.5 px-3 text-right">Trạng Thái</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {unsubmittedModalData.students.map((st, index) => (
+                    <tr key={index} className="hover:bg-rose-50/30 transition">
+                      <td className="py-2 px-3 text-center font-mono text-slate-400">{index + 1}</td>
+                      <td className="py-2 px-3 font-mono font-bold text-slate-700">{st.code}</td>
+                      <td className="py-2 px-3 font-bold text-slate-900">{st.name}</td>
+                      <td className="py-2 px-3 text-slate-600">{st.class_name}</td>
+                      <td className="py-2 px-3 text-right">
+                        <span className="text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-md">
+                          Chưa nộp bài
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Footer */}
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100 text-xs">
+              <span className="text-slate-400 italic">
+                * Danh sách được đối chiếu tự động với danh sách lớp học thực tế.
+              </span>
+              <button
+                type="button"
+                onClick={() => setUnsubmittedModalData(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl transition cursor-pointer"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Thông Báo Nổi Toast Khi Sao Chép Zalo Thành Công */}
+      {copiedToast && (
+        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-4 py-3 rounded-2xl shadow-xl border border-slate-700 flex items-center gap-2 text-xs font-bold animate-in slide-in-from-bottom-5">
+          <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{copiedToast}</span>
         </div>
       )}
     </div>
