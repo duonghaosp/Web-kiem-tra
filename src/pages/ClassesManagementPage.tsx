@@ -24,6 +24,10 @@ import {
   Square,
   Eraser,
   ArrowUpDown,
+  Calendar,
+  ChevronUp,
+  ChevronDown,
+  GripVertical,
 } from 'lucide-react';
 import { ClassItem, Profile } from '../types/database';
 import { GrantXpModal } from '../components/gamification/GrantXpModal';
@@ -161,7 +165,11 @@ export const ClassesManagementPage: React.FC = () => {
     student_code: '',
     full_name: '',
     username: '',
+    birth_date: '',
   });
+
+  // State hỗ trợ kéo thả (Drag & Drop) và đổi thứ tự học sinh
+  const [draggedStudentId, setDraggedStudentId] = useState<string | null>(null);
 
   // Modal tặng XP
   const [isGrantXpOpen, setIsGrantXpOpen] = useState(false);
@@ -274,10 +282,50 @@ export const ClassesManagementPage: React.FC = () => {
     }
   };
 
+  // Helper chuẩn hóa ngày sinh từ Excel / chuỗi nhập
+  const formatBirthDate = (val: any): string => {
+    if (!val) return '';
+    if (typeof val === 'number') {
+      // Xử lý số serial date của Excel (ví dụ 41076 -> 16/06/2012)
+      const date = new Date(Math.round((val - 25569) * 86400 * 1000));
+      if (!isNaN(date.getTime())) {
+        const d = String(date.getUTCDate()).padStart(2, '0');
+        const m = String(date.getUTCMonth() + 1).padStart(2, '0');
+        const y = date.getUTCFullYear();
+        return `${d}/${m}/${y}`;
+      }
+    }
+    const str = String(val).trim();
+    // Khớp dạng DD/MM/YYYY hoặc D/M/YYYY
+    const dmyMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+    if (dmyMatch) {
+      const d = dmyMatch[1].padStart(2, '0');
+      const m = dmyMatch[2].padStart(2, '0');
+      const y = dmyMatch[3];
+      return `${d}/${m}/${y}`;
+    }
+    // Khớp dạng YYYY-MM-DD
+    const ymdMatch = str.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+    if (ymdMatch) {
+      const y = ymdMatch[1];
+      const m = ymdMatch[2].padStart(2, '0');
+      const d = ymdMatch[3].padStart(2, '0');
+      return `${d}/${m}/${y}`;
+    }
+    // Khớp dạng DD/MM
+    const dmMatch = str.match(/^(\d{1,2})[\/\-\.](\d{1,2})$/);
+    if (dmMatch) {
+      return `${dmMatch[1].padStart(2, '0')}/${dmMatch[2].padStart(2, '0')}`;
+    }
+    return str;
+  };
+
   // Lưu Học sinh (Thêm mới hoặc Sửa)
   const handleSaveStudent = (e: React.FormEvent) => {
     e.preventDefault();
     if (!studentForm.full_name.trim()) return;
+
+    const formattedDob = studentForm.birth_date ? formatBirthDate(studentForm.birth_date) : '';
 
     if (editingStudent) {
       // Sửa thông tin học sinh
@@ -288,6 +336,7 @@ export const ClassesManagementPage: React.FC = () => {
               full_name: studentForm.full_name.trim(),
               student_code: studentForm.student_code.trim(),
               username: studentForm.username.trim() || s.username,
+              birth_date: formattedDob || null,
             }
           : s
       );
@@ -300,6 +349,7 @@ export const ClassesManagementPage: React.FC = () => {
         student_code: studentForm.student_code.trim() || `HS0${gradeFilter}1`,
         username: studentForm.username.trim() || `hs_${Date.now().toString().slice(-4)}`,
         full_name: studentForm.full_name.trim(),
+        birth_date: formattedDob || null,
         role: 'student',
         grade: gradeFilter,
         class_name: currentClass.name,
@@ -312,7 +362,93 @@ export const ClassesManagementPage: React.FC = () => {
 
     setIsStudentModalOpen(false);
     setEditingStudent(null);
-    setStudentForm({ student_code: '', full_name: '', username: '' });
+    setStudentForm({ student_code: '', full_name: '', username: '', birth_date: '' });
+  };
+
+  // Di chuyển học sinh lên 1 vị trí (Gợi ý 1 & 2: Tự động đánh lại mã liên tục)
+  const handleMoveStudentUp = (index: number) => {
+    if (index <= 0 || index >= filteredStudents.length) return;
+
+    const targetStudent = filteredStudents[index];
+    const prevStudent = filteredStudents[index - 1];
+    if (!targetStudent || !prevStudent) return;
+
+    const currentClassStudents = students.filter((s) => s.class_name === currentClass.name);
+    const idxA = currentClassStudents.findIndex((s) => s.id === targetStudent.id);
+    const idxB = currentClassStudents.findIndex((s) => s.id === prevStudent.id);
+    if (idxA === -1 || idxB === -1) return;
+
+    const reorderedClass = [...currentClassStudents];
+    const temp = reorderedClass[idxA];
+    reorderedClass[idxA] = reorderedClass[idxB];
+    reorderedClass[idxB] = temp;
+
+    const otherStudents = students.filter((s) => s.class_name !== currentClass.name);
+    const combined = [...otherStudents, ...reorderedClass];
+    const reindexed = reindexAllStudentCodes(combined, classes);
+    saveStudents(reindexed);
+  };
+
+  // Di chuyển học sinh xuống 1 vị trí (Gợi ý 1 & 2: Tự động đánh lại mã liên tục)
+  const handleMoveStudentDown = (index: number) => {
+    if (index < 0 || index >= filteredStudents.length - 1) return;
+
+    const targetStudent = filteredStudents[index];
+    const nextStudent = filteredStudents[index + 1];
+    if (!targetStudent || !nextStudent) return;
+
+    const currentClassStudents = students.filter((s) => s.class_name === currentClass.name);
+    const idxA = currentClassStudents.findIndex((s) => s.id === targetStudent.id);
+    const idxB = currentClassStudents.findIndex((s) => s.id === nextStudent.id);
+    if (idxA === -1 || idxB === -1) return;
+
+    const reorderedClass = [...currentClassStudents];
+    const temp = reorderedClass[idxA];
+    reorderedClass[idxA] = reorderedClass[idxB];
+    reorderedClass[idxB] = temp;
+
+    const otherStudents = students.filter((s) => s.class_name !== currentClass.name);
+    const combined = [...otherStudents, ...reorderedClass];
+    const reindexed = reindexAllStudentCodes(combined, classes);
+    saveStudents(reindexed);
+  };
+
+  // Kéo thả (Drag & Drop) học sinh để đổi thứ tự trực tiếp bằng chuột
+  const handleDragStart = (e: React.DragEvent, id: string) => {
+    setDraggedStudentId(id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDropStudent = (e: React.DragEvent, targetId: string) => {
+    e.preventDefault();
+    if (!draggedStudentId || draggedStudentId === targetId) {
+      setDraggedStudentId(null);
+      return;
+    }
+
+    const currentClassStudents = students.filter((s) => s.class_name === currentClass.name);
+    const fromIndex = currentClassStudents.findIndex((s) => s.id === draggedStudentId);
+    const toIndex = currentClassStudents.findIndex((s) => s.id === targetId);
+
+    if (fromIndex === -1 || toIndex === -1) {
+      setDraggedStudentId(null);
+      return;
+    }
+
+    const reorderedClass = [...currentClassStudents];
+    const [moved] = reorderedClass.splice(fromIndex, 1);
+    reorderedClass.splice(toIndex, 0, moved);
+
+    const otherStudents = students.filter((s) => s.class_name !== currentClass.name);
+    const combined = [...otherStudents, ...reorderedClass];
+    const reindexed = reindexAllStudentCodes(combined, classes);
+    saveStudents(reindexed);
+    setDraggedStudentId(null);
   };
 
   // Xóa 1 học sinh đơn lẻ
@@ -464,6 +600,7 @@ export const ClassesManagementPage: React.FC = () => {
       let tenCol = -1;
       let codeCol = -1;
       let usernameCol = -1;
+      let dobCol = -1;
 
       // 1. Quét tìm các cột thông qua từ khóa tiêu đề (tìm trong 20 dòng đầu)
       for (let r = 0; r < Math.min(rawRows.length, 20); r++) {
@@ -496,6 +633,16 @@ export const ClassesManagementPage: React.FC = () => {
             if (hoDemCol === -1) hoDemCol = cIdx;
           } else if (text === 'tên' || text === 'tên hs' || text === 'tên gọi') {
             if (tenCol === -1) tenCol = cIdx;
+          } else if (
+            text.includes('ngày sinh') ||
+            text.includes('ngaysinh') ||
+            text.includes('sinh ngày') ||
+            text.includes('ngày tháng năm sinh') ||
+            text === 'dob' ||
+            text === 'date of birth' ||
+            text === 'năm sinh'
+          ) {
+            if (dobCol === -1) dobCol = cIdx;
           } else if (
             text.includes('mã học sinh') ||
             text.includes('mã hs') ||
@@ -596,6 +743,15 @@ export const ClassesManagementPage: React.FC = () => {
           continue;
         }
 
+        // Đọc ngày sinh nếu có trong cột Ngày sinh hoặc trích xuất từ tên trong ngoặc (ví dụ "Phàn Lở Mẩy (16/6)")
+        let birthDate = dobCol !== -1 && row[dobCol] ? formatBirthDate(row[dobCol]) : '';
+        if (!birthDate) {
+          const dobInNameMatch = fullName.match(/\((\d{1,2}[\/\-\.]\d{1,2}(?:[\/\-\.]\d{2,4})?)\)/);
+          if (dobInNameMatch) {
+            birthDate = formatBirthDate(dobInNameMatch[1]);
+          }
+        }
+
         const customCode = codeCol !== -1 && row[codeCol] ? String(row[codeCol]).trim() : '';
         const customUsername = usernameCol !== -1 && row[usernameCol] ? String(row[usernameCol]).trim() : '';
         const cleanUname = customUsername || `${removeVietnameseTones(fullName)}${gradeFilter}${newImportedStudents.length + 1}`;
@@ -604,6 +760,7 @@ export const ClassesManagementPage: React.FC = () => {
           id: 's_imp_' + Date.now() + '_' + r + '_' + newImportedStudents.length,
           student_code: customCode || `HS0${gradeFilter}${newImportedStudents.length + 1}`,
           full_name: fullName,
+          birth_date: birthDate || null,
           username: cleanUname,
           role: 'student',
           grade: gradeFilter,
@@ -639,11 +796,11 @@ export const ClassesManagementPage: React.FC = () => {
   // Tải file mẫu danh sách học sinh
   const downloadStudentExcelTemplate = () => {
     const templateData = [
-      { 'Mã học sinh': `HS0${gradeFilter}1`, 'Họ và tên': 'Tẩn Thị Lan Anh', 'Tên đăng nhập': 'tanthilananh' },
-      { 'Mã học sinh': `HS0${gradeFilter}2`, 'Họ và tên': 'Phàn Ngọc Anh', 'Tên đăng nhập': 'phanngocanh' },
-      { 'Mã học sinh': `HS0${gradeFilter}3`, 'Họ và tên': 'Phàn Thúy Anh', 'Tên đăng nhập': 'phanthuyanh' },
-      { 'Mã học sinh': `HS0${gradeFilter}4`, 'Họ và tên': 'Lò Giá Bè', 'Tên đăng nhập': 'logiabe' },
-      { 'Mã học sinh': `HS0${gradeFilter}5`, 'Họ và tên': 'Chang Dì Bư', 'Tên đăng nhập': 'changdibu' },
+      { 'Mã học sinh': `HS0${gradeFilter}1`, 'Họ và tên': 'Tẩn Thị Lan Anh', 'Ngày sinh': '16/06/2012', 'Tên đăng nhập': 'tanthilananh' },
+      { 'Mã học sinh': `HS0${gradeFilter}2`, 'Họ và tên': 'Phàn Ngọc Anh', 'Ngày sinh': '20/10/2012', 'Tên đăng nhập': 'phanngocanh' },
+      { 'Mã học sinh': `HS0${gradeFilter}3`, 'Họ và tên': 'Phàn Thúy Anh', 'Ngày sinh': '15/03/2012', 'Tên đăng nhập': 'phanthuyanh' },
+      { 'Mã học sinh': `HS0${gradeFilter}4`, 'Họ và tên': 'Lò Giá Bè', 'Ngày sinh': '05/09/2012', 'Tên đăng nhập': 'logiabe' },
+      { 'Mã học sinh': `HS0${gradeFilter}5`, 'Họ và tên': 'Chang Dì Bư', 'Ngày sinh': '12/12/2012', 'Tên đăng nhập': 'changdibu' },
     ];
     const ws = XLSX.utils.json_to_sheet(templateData);
     const wb = XLSX.utils.book_new();
@@ -921,6 +1078,7 @@ export const ClassesManagementPage: React.FC = () => {
                     student_code: `HS0${gradeFilter}1`,
                     full_name: '',
                     username: '',
+                    birth_date: '',
                   });
                   setIsStudentModalOpen(true);
                 }}
@@ -998,6 +1156,7 @@ export const ClassesManagementPage: React.FC = () => {
                         student_code: `HS0${gradeFilter}0${students.length + 1}`,
                         full_name: '',
                         username: '',
+                        birth_date: '',
                       });
                       setIsStudentModalOpen(true);
                     }}
@@ -1020,9 +1179,10 @@ export const ClassesManagementPage: React.FC = () => {
                         title="Chọn tất cả học sinh"
                       />
                     </th>
-                    <th className="py-3 px-3">STT</th>
+                    <th className="py-3 px-2 w-16 text-center">Thứ Tự</th>
                     <th className="py-3 px-3">Mã Học Sinh</th>
                     <th className="py-3 px-3">Họ và Tên</th>
+                    <th className="py-3 px-3">Ngày Sinh</th>
                     <th className="py-3 px-3">Cấp Độ / XP</th>
                     <th className="py-3 px-3 text-right">Thao Tác</th>
                   </tr>
@@ -1030,14 +1190,19 @@ export const ClassesManagementPage: React.FC = () => {
                 <tbody className="divide-y divide-slate-100">
                   {filteredStudents.map((st, idx) => {
                     const isSelected = selectedStudentIds.has(st.id);
+                    const isDragging = draggedStudentId === st.id;
                     return (
                       <tr
                         key={st.id}
-                        className={`transition ${
-                          isSelected ? 'bg-red-50/70' : 'hover:bg-slate-50/80'
-                        }`}
+                        draggable
+                        onDragStart={(e) => handleDragStart(e, st.id)}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDropStudent(e, st.id)}
+                        className={`transition group ${
+                          isDragging ? 'opacity-40 bg-sky-50' : ''
+                        } ${isSelected ? 'bg-red-50/70' : 'hover:bg-slate-50/80'}`}
                       >
-                        <td className="py-3 px-3 text-center">
+                        <td className="py-3 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                           <input
                             type="checkbox"
                             checked={isSelected}
@@ -1045,11 +1210,31 @@ export const ClassesManagementPage: React.FC = () => {
                             className="w-4 h-4 rounded text-ocean-600 focus:ring-ocean-500 border-slate-300 cursor-pointer"
                           />
                         </td>
-                        <td className="py-3 px-3 text-slate-400 font-mono">{idx + 1}</td>
+                        <td className="py-3 px-2 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <span
+                              className="cursor-grab active:cursor-grabbing text-slate-300 group-hover:text-ocean-500 transition"
+                              title="Nhấn giữ chuột để kéo thả đổi thứ tự"
+                            >
+                              <GripVertical className="w-3.5 h-3.5" />
+                            </span>
+                            <span className="font-mono text-xs font-bold text-slate-500">{idx + 1}</span>
+                          </div>
+                        </td>
                         <td className="py-3 px-3 font-mono font-bold text-ocean-700">
                           {st.student_code || `HS0${gradeFilter}${idx + 1}`}
                         </td>
                         <td className="py-3 px-3 font-bold text-slate-900">{st.full_name}</td>
+                        <td className="py-3 px-3">
+                          {st.birth_date ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-sky-50 text-sky-800 border border-sky-200 text-xs font-semibold">
+                              <Calendar className="w-3 h-3 text-sky-600 shrink-0" />
+                              <span>{st.birth_date}</span>
+                            </span>
+                          ) : (
+                            <span className="text-[11px] text-slate-300 italic font-medium">Chưa có</span>
+                          )}
+                        </td>
                         <td className="py-3 px-3">
                           <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold">
                             <Zap className="w-3 h-3 fill-amber-500 text-amber-500" />
@@ -1057,7 +1242,27 @@ export const ClassesManagementPage: React.FC = () => {
                           </span>
                         </td>
                         <td className="py-3 px-3 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
+                          <div className="flex items-center justify-end gap-1">
+                            {/* Nút Di Chuyển Lên / Xuống (Gợi ý 1) */}
+                            <button
+                              type="button"
+                              disabled={idx === 0}
+                              onClick={() => handleMoveStudentUp(idx)}
+                              title="Di chuyển lên trên (Đổi thứ tự)"
+                              className="p-1.5 text-slate-400 hover:text-ocean-600 hover:bg-ocean-50 rounded-lg transition disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed"
+                            >
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={idx === filteredStudents.length - 1}
+                              onClick={() => handleMoveStudentDown(idx)}
+                              title="Di chuyển xuống dưới (Đổi thứ tự)"
+                              className="p-1.5 text-slate-400 hover:text-ocean-600 hover:bg-ocean-50 rounded-lg transition disabled:opacity-20 cursor-pointer disabled:cursor-not-allowed"
+                            >
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+
                             <button
                               type="button"
                               onClick={() => {
@@ -1088,6 +1293,7 @@ export const ClassesManagementPage: React.FC = () => {
                                   student_code: st.student_code || '',
                                   full_name: st.full_name,
                                   username: st.username,
+                                  birth_date: st.birth_date || '',
                                 });
                                 setIsStudentModalOpen(true);
                               }}
@@ -1178,6 +1384,19 @@ export const ClassesManagementPage: React.FC = () => {
                   className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-ocean-500 focus:outline-none"
                   required
                   autoFocus
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-700 mb-1 flex items-center gap-1">
+                  <Calendar className="w-3.5 h-3.5 text-ocean-600" />
+                  <span>Ngày Sinh (Ví dụ: 16/06/2012):</span>
+                </label>
+                <input
+                  type="text"
+                  placeholder="Ví dụ: 16/06/2012"
+                  value={studentForm.birth_date}
+                  onChange={(e) => setStudentForm({ ...studentForm, birth_date: e.target.value })}
+                  className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-xs font-bold focus:ring-2 focus:ring-ocean-500 focus:outline-none"
                 />
               </div>
               <div>

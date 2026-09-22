@@ -30,6 +30,7 @@ export interface Profile {
   created_at?: string;
   updated_at?: string;
   class_name?: string;
+  birth_date?: string | null;
 }
 
 export interface ClassItem {

@@ -673,7 +673,7 @@ export const ExamTakingPage: React.FC = () => {
                       Họ và tên của em ({classStudents.length} học sinh):
                     </label>
                     <span className="text-[11px] font-semibold text-ocean-700 bg-ocean-50 px-2 py-0.5 rounded-md">
-                      {selectedClass} • Xếp theo tên (A - Z)
+                      {selectedClass} • Theo sổ điểm lớp
                     </span>
                   </div>
 
@@ -710,7 +710,7 @@ export const ExamTakingPage: React.FC = () => {
                     </option>
                     {filteredClassStudents.map((st: Profile, idx: number) => (
                       <option key={st.id} value={st.id}>
-                        {idx + 1}. {st.full_name} {st.student_code ? `(${st.student_code})` : ''}
+                        {idx + 1}. {st.full_name} {st.birth_date ? `(Sinh: ${st.birth_date})` : ''} {st.student_code ? `[${st.student_code}]` : ''}
                       </option>
                     ))}
                   </select>
@@ -722,7 +722,7 @@ export const ExamTakingPage: React.FC = () => {
                   )}
 
                   <p className="text-[11px] text-slate-400 mt-1">
-                    💡 Danh sách của <strong>{selectedClass}</strong> đã được sắp xếp chuẩn theo Tên (A - Z). Em hãy bấm chọn đúng tên của mình nhé!
+                    💡 Danh sách của <strong>{selectedClass}</strong> hiển thị theo đúng thứ tự sổ điểm. Em hãy bấm chọn đúng tên của mình nhé!
                   </p>
                 </div>
 
