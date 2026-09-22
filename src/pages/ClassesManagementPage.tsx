@@ -20,6 +20,9 @@ import {
   Cloud,
   CloudUpload,
   RefreshCw,
+  CheckSquare,
+  Square,
+  Eraser,
 } from 'lucide-react';
 import { ClassItem, Profile } from '../types/database';
 import { GrantXpModal } from '../components/gamification/GrantXpModal';
@@ -95,6 +98,7 @@ export const ClassesManagementPage: React.FC = () => {
   });
 
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [selectedStudentIds, setSelectedStudentIds] = useState<Set<string>>(new Set());
 
   // Hàm lưu học sinh xuống LocalStorage & Supabase Cloud
   const saveStudents = (newStudents: Profile[]) => {
@@ -310,12 +314,110 @@ export const ClassesManagementPage: React.FC = () => {
     setStudentForm({ student_code: '', full_name: '', username: '' });
   };
 
-  // Xóa học sinh
+  // Xóa 1 học sinh đơn lẻ
   const handleDeleteStudent = (studentId: string, studentName: string) => {
     if (confirm(`Cô có chắc chắn muốn xóa học sinh "${studentName}" khỏi ${currentClass.name} không?`)) {
       const remaining = students.filter((s) => s.id !== studentId);
       const reindexed = reindexAllStudentCodes(remaining, classes);
       saveStudents(reindexed);
+      setSelectedStudentIds((prev) => {
+        const next = new Set(prev);
+        next.delete(studentId);
+        return next;
+      });
+    }
+  };
+
+  // 1. Xóa toàn bộ học sinh của Lớp hiện tại
+  const handleDeleteAllInCurrentClass = () => {
+    const inClassCount = students.filter((s) => s.class_name === currentClass.name).length;
+    if (inClassCount === 0) {
+      alert(`${currentClass.name} hiện tại chưa có học sinh nào!`);
+      return;
+    }
+    if (
+      confirm(
+        `⚠️ CÔ CÓ CHẮC CHẮN MUỐN XÓA TOÀN BỘ ${inClassCount} HỌC SINH CỦA "${currentClass.name}" KHÔNG?\n\nThao tác này sẽ làm sạch danh sách học sinh của lớp để cô có thể nhập hoặc Import file Excel mới.`
+      )
+    ) {
+      const remaining = students.filter((s) => s.class_name !== currentClass.name);
+      const reindexed = reindexAllStudentCodes(remaining, classes);
+      saveStudents(reindexed);
+      setSelectedStudentIds(new Set());
+      alert(`✅ Đã xóa sạch toàn bộ học sinh của ${currentClass.name} và đồng bộ lên Đám mây!`);
+    }
+  };
+
+  // 2. Xóa toàn bộ học sinh của Khối hiện tại
+  const handleDeleteAllInCurrentGrade = () => {
+    const inGradeCount = students.filter((s) => Number(s.grade) === Number(gradeFilter)).length;
+    if (inGradeCount === 0) {
+      alert(`Khối ${gradeFilter} hiện tại chưa có học sinh nào!`);
+      return;
+    }
+    if (
+      confirm(
+        `⚠️ CÔ CÓ CHẮC CHẮN MUỐN XÓA TOÀN BỘ ${inGradeCount} HỌC SINH CỦA "KHỐI ${gradeFilter}" KHÔNG?\n\n(Bao gồm tất cả các lớp của Khối ${gradeFilter})`
+      )
+    ) {
+      const remaining = students.filter((s) => Number(s.grade) !== Number(gradeFilter));
+      const reindexed = reindexAllStudentCodes(remaining, classes);
+      saveStudents(reindexed);
+      setSelectedStudentIds(new Set());
+      alert(`✅ Đã xóa sạch ${inGradeCount} học sinh của Khối ${gradeFilter} thành công!`);
+    }
+  };
+
+  // 3. Xóa sạch 100% toàn bộ học sinh của Toàn trường (4 Khối THCS)
+  const handleClearAllStudentsSchool = () => {
+    if (students.length === 0) {
+      alert('Hiện tại hệ thống không có học sinh nào!');
+      return;
+    }
+    if (
+      confirm(
+        `🚨 CẢNH BÁO QUAN TRỌNG: CÔ CÓ MUỐN XÓA SẠCH TOÀN BỘ ${students.length} HỌC SINH CỦA TOÀN TRƯỜNG KHÔNG?\n\nThao tác này sẽ làm trống toàn bộ 4 khối lớp để cô nạp lại danh sách học sinh mới từ đầu năm học.`
+      )
+    ) {
+      saveStudents([]);
+      setSelectedStudentIds(new Set());
+      alert('✅ Đã xóa sạch toàn bộ học sinh của toàn trường và cập nhật lên Đám mây thành công!');
+    }
+  };
+
+  // 4. Xóa các học sinh được chọn qua Checkbox
+  const handleDeleteSelectedStudents = () => {
+    if (selectedStudentIds.size === 0) return;
+    const count = selectedStudentIds.size;
+    if (
+      confirm(
+        `Cô có chắc chắn muốn xóa ${count} học sinh đã chọn khỏi ${currentClass.name} không?`
+      )
+    ) {
+      const remaining = students.filter((s) => !selectedStudentIds.has(s.id));
+      const reindexed = reindexAllStudentCodes(remaining, classes);
+      saveStudents(reindexed);
+      setSelectedStudentIds(new Set());
+      alert(`✅ Đã xóa thành công ${count} học sinh đã chọn!`);
+    }
+  };
+
+  // Chọn / Bỏ chọn 1 học sinh
+  const toggleSelectStudent = (id: string) => {
+    setSelectedStudentIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  // Chọn / Bỏ chọn tất cả học sinh đang hiển thị trong bảng
+  const toggleSelectAll = () => {
+    if (selectedStudentIds.size === filteredStudents.length && filteredStudents.length > 0) {
+      setSelectedStudentIds(new Set());
+    } else {
+      setSelectedStudentIds(new Set(filteredStudents.map((s) => s.id)));
     }
   };
 
@@ -575,6 +677,16 @@ export const ClassesManagementPage: React.FC = () => {
           >
             <RotateCcw className="w-4 h-4" />
           </button>
+
+          <button
+            type="button"
+            onClick={handleClearAllStudentsSchool}
+            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold transition active:scale-95 cursor-pointer"
+            title="Xóa sạch toàn bộ học sinh 4 khối (Toàn trường) để nạp mới"
+          >
+            <Eraser className="w-3.5 h-3.5 text-red-600" />
+            <span className="hidden sm:inline">Xóa Toàn Trường</span>
+          </button>
         </div>
       </div>
 
@@ -673,7 +785,7 @@ export const ClassesManagementPage: React.FC = () => {
               <button
                 type="button"
                 onClick={handleReindexGradeCodes}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition active:scale-95"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition active:scale-95 cursor-pointer"
                 title="Đánh lại số thứ tự mã học sinh liên tục từ A1 đến A4 theo số lượng thực tế"
               >
                 <RotateCcw className="w-3.5 h-3.5 text-amber-600" /> Đánh Lại Mã HS
@@ -682,7 +794,7 @@ export const ClassesManagementPage: React.FC = () => {
               <button
                 type="button"
                 onClick={downloadStudentExcelTemplate}
-                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition active:scale-95"
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition active:scale-95 cursor-pointer"
                 title="Tải file Excel mẫu để nhập danh sách"
               >
                 <Download className="w-3.5 h-3.5" /> Mẫu Excel
@@ -698,7 +810,27 @@ export const ClassesManagementPage: React.FC = () => {
                 />
               </label>
 
-              {/* Nút Đồng Bộ Đám Mây (Gợi ý 2) */}
+              {/* Nút Xóa Cả Lớp (Gợi ý 1) */}
+              <button
+                type="button"
+                onClick={handleDeleteAllInCurrentClass}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-red-50 hover:bg-red-100 text-red-700 border border-red-200 text-xs font-bold transition active:scale-95 cursor-pointer"
+                title={`Xóa sạch toàn bộ học sinh của ${currentClass.name}`}
+              >
+                <Trash2 className="w-3.5 h-3.5 text-red-600" /> Xóa Cả Lớp
+              </button>
+
+              {/* Nút Xóa Cả Khối */}
+              <button
+                type="button"
+                onClick={handleDeleteAllInCurrentGrade}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition active:scale-95 cursor-pointer"
+                title={`Xóa toàn bộ học sinh của tất cả các lớp thuộc Khối ${gradeFilter}`}
+              >
+                <Eraser className="w-3.5 h-3.5 text-rose-600" /> Xóa Khối {gradeFilter}
+              </button>
+
+              {/* Nút Đồng Bộ Đám Mây */}
               <button
                 type="button"
                 onClick={handleManualCloudSync}
@@ -721,12 +853,41 @@ export const ClassesManagementPage: React.FC = () => {
                   });
                   setIsStudentModalOpen(true);
                 }}
-                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-ocean-600 hover:bg-ocean-500 active:scale-95 text-white text-xs font-bold shadow-xs transition"
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-ocean-600 hover:bg-ocean-500 active:scale-95 text-white text-xs font-bold shadow-xs transition cursor-pointer"
               >
                 <UserPlus className="w-3.5 h-3.5" /> Thêm Học Sinh
               </button>
             </div>
           </div>
+
+          {/* Thanh công cụ khi chọn nhiều học sinh qua Checkbox */}
+          {selectedStudentIds.size > 0 && (
+            <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 bg-red-50/90 border border-red-200 rounded-2xl animate-in fade-in slide-in-from-top-2">
+              <div className="flex items-center gap-2 text-xs font-bold text-red-900">
+                <CheckSquare className="w-4 h-4 text-red-600 shrink-0" />
+                <span>
+                  Đã chọn <strong className="text-red-700 text-sm underline">{selectedStudentIds.size}</strong> học sinh trong {currentClass.name}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setSelectedStudentIds(new Set())}
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-xs font-bold transition cursor-pointer"
+                >
+                  Bỏ chọn
+                </button>
+                <button
+                  type="button"
+                  onClick={handleDeleteSelectedStudents}
+                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black shadow-xs transition active:scale-95 cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Xóa {selectedStudentIds.size} học sinh đã chọn</span>
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Thanh Tìm Kiếm Học Sinh */}
           <div className="relative">
@@ -777,8 +938,17 @@ export const ClassesManagementPage: React.FC = () => {
               </div>
             ) : (
               <table className="w-full text-left text-xs sm:text-sm">
-                <thead className="bg-slate-50 text-slate-400 font-black uppercase tracking-wider border-b border-slate-200">
+                <thead className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider border-b border-slate-200">
                   <tr>
+                    <th className="py-3 px-3 w-10 text-center">
+                      <input
+                        type="checkbox"
+                        checked={filteredStudents.length > 0 && selectedStudentIds.size === filteredStudents.length}
+                        onChange={toggleSelectAll}
+                        className="w-4 h-4 rounded text-ocean-600 focus:ring-ocean-500 border-slate-300 cursor-pointer"
+                        title="Chọn tất cả học sinh"
+                      />
+                    </th>
                     <th className="py-3 px-3">STT</th>
                     <th className="py-3 px-3">Mã Học Sinh</th>
                     <th className="py-3 px-3">Họ và Tên</th>
@@ -787,71 +957,87 @@ export const ClassesManagementPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {filteredStudents.map((st, idx) => (
-                    <tr key={st.id} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3 px-3 text-slate-400 font-mono">{idx + 1}</td>
-                      <td className="py-3 px-3 font-mono font-bold text-ocean-700">
-                        {st.student_code || `HS0${gradeFilter}${idx + 1}`}
-                      </td>
-                      <td className="py-3 px-3 font-bold text-slate-900">{st.full_name}</td>
-                      <td className="py-3 px-3">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold">
-                          <Zap className="w-3 h-3 fill-amber-500 text-amber-500" />
-                          Cấp {st.level || 1} • {st.xp || 100} XP
-                        </span>
-                      </td>
-                      <td className="py-3 px-3 text-right">
-                        <div className="flex items-center justify-end gap-1.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedStudentForBadge(st);
-                              setIsBadgeModalOpen(true);
-                            }}
-                            title="Trao tặng Huy hiệu Danh dự cho học sinh"
-                            className="p-1.5 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer"
-                          >
-                            <Award className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedStudentForXp(st);
-                              setIsGrantXpOpen(true);
-                            }}
-                            title="Tặng XP thưởng cho học sinh"
-                            className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer"
-                          >
-                            <Zap className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setEditingStudent(st);
-                              setStudentForm({
-                                student_code: st.student_code || '',
-                                full_name: st.full_name,
-                                username: st.username,
-                              });
-                              setIsStudentModalOpen(true);
-                            }}
-                            title="Sửa thông tin học sinh"
-                            className="p-1.5 text-slate-400 hover:text-ocean-600 hover:bg-ocean-50 rounded-lg transition cursor-pointer"
-                          >
-                            <Edit2 className="w-4 h-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteStudent(st.id, st.full_name)}
-                            title="Xóa học sinh này"
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredStudents.map((st, idx) => {
+                    const isSelected = selectedStudentIds.has(st.id);
+                    return (
+                      <tr
+                        key={st.id}
+                        className={`transition ${
+                          isSelected ? 'bg-red-50/70' : 'hover:bg-slate-50/80'
+                        }`}
+                      >
+                        <td className="py-3 px-3 text-center">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSelectStudent(st.id)}
+                            className="w-4 h-4 rounded text-ocean-600 focus:ring-ocean-500 border-slate-300 cursor-pointer"
+                          />
+                        </td>
+                        <td className="py-3 px-3 text-slate-400 font-mono">{idx + 1}</td>
+                        <td className="py-3 px-3 font-mono font-bold text-ocean-700">
+                          {st.student_code || `HS0${gradeFilter}${idx + 1}`}
+                        </td>
+                        <td className="py-3 px-3 font-bold text-slate-900">{st.full_name}</td>
+                        <td className="py-3 px-3">
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 text-xs font-bold">
+                            <Zap className="w-3 h-3 fill-amber-500 text-amber-500" />
+                            Cấp {st.level || 1} • {st.xp || 100} XP
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right">
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedStudentForBadge(st);
+                                setIsBadgeModalOpen(true);
+                              }}
+                              title="Trao tặng Huy hiệu Danh dự cho học sinh"
+                              className="p-1.5 text-amber-500 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer"
+                            >
+                              <Award className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedStudentForXp(st);
+                                setIsGrantXpOpen(true);
+                              }}
+                              title="Tặng XP thưởng cho học sinh"
+                              className="p-1.5 text-amber-600 hover:bg-amber-50 rounded-lg transition cursor-pointer"
+                            >
+                              <Zap className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingStudent(st);
+                                setStudentForm({
+                                  student_code: st.student_code || '',
+                                  full_name: st.full_name,
+                                  username: st.username,
+                                });
+                                setIsStudentModalOpen(true);
+                              }}
+                              title="Sửa thông tin học sinh"
+                              className="p-1.5 text-slate-400 hover:text-ocean-600 hover:bg-ocean-50 rounded-lg transition cursor-pointer"
+                            >
+                              <Edit2 className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteStudent(st.id, st.full_name)}
+                              title="Xóa học sinh này"
+                              className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition cursor-pointer"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             )}
