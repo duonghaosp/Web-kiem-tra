@@ -16,6 +16,7 @@ import {
   Compass,
   X,
 } from 'lucide-react';
+import { LOCAL_TEACHER_AVATAR_KEY } from '../../lib/brandingSync';
 import { GeoGlobeSticker } from '../common/GeoStickers';
 
 export const Sidebar: React.FC = () => {
@@ -24,6 +25,9 @@ export const Sidebar: React.FC = () => {
   const navigate = useNavigate();
 
   const [isMobileOpen, setIsMobileOpen] = useState(false);
+  const [teacherAvatar, setTeacherAvatar] = useState(
+    () => localStorage.getItem(LOCAL_TEACHER_AVATAR_KEY) || profile?.avatar_url || ''
+  );
 
   const [schoolName, setSchoolName] = useState(() => {
     let stored = localStorage.getItem('geo_school_name');
@@ -42,6 +46,8 @@ export const Sidebar: React.FC = () => {
         localStorage.setItem('geo_school_name', stored);
       }
       setSchoolName(stored || 'Trường PTDTBT TH&THCS Sì Lở Lầu');
+      const storedAvatar = localStorage.getItem(LOCAL_TEACHER_AVATAR_KEY);
+      if (storedAvatar) setTeacherAvatar(storedAvatar);
     };
     const handleToggleMobile = () => setIsMobileOpen((prev) => !prev);
     const handleCloseMobile = () => setIsMobileOpen(false);
@@ -88,6 +94,7 @@ export const Sidebar: React.FC = () => {
             <div className="w-16 h-16 rounded-full p-0.5 bg-gradient-to-tr from-[#C9942C] via-[#E8B858] to-[#C9942C] shadow-lg flex items-center justify-center">
               <img
                 src={
+                  teacherAvatar ||
                   profile?.avatar_url ||
                   'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=120&q=80'
                 }

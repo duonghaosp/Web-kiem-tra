@@ -24,6 +24,14 @@ import {
   Menu,
 } from 'lucide-react';
 import { uploadToStorage } from '../../lib/supabase';
+import {
+  uploadAndSaveTeacherAvatar,
+  uploadAndSaveSchoolLogo,
+  saveSchoolLogo,
+  LOCAL_TEACHER_AVATAR_KEY,
+  LOCAL_SCHOOL_LOGO_KEY,
+  syncBrandingFromCloud,
+} from '../../lib/brandingSync';
 import { GeoGlobeSticker } from '../common/GeoStickers';
 import { playSoftClick } from '../../utils/soundEffects';
 
@@ -97,11 +105,16 @@ export const Navbar: React.FC = () => {
     localStorage.getItem('geo_school_name') || 'Trường THCS Môn Địa Lí'
   );
   const [schoolLogo, setSchoolLogo] = useState(
-    () => localStorage.getItem('geo_school_logo') || ''
+    () => localStorage.getItem(LOCAL_SCHOOL_LOGO_KEY) || ''
+  );
+  const [teacherAvatar, setTeacherAvatar] = useState(
+    () => localStorage.getItem(LOCAL_TEACHER_AVATAR_KEY) || profile?.avatar_url || ''
   );
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
+  const [isUploadingLogo, setIsUploadingLogo] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileInputAvatarRef = useRef<HTMLInputElement | null>(null);
+  const fileInputLogoRef = useRef<HTMLInputElement | null>(null);
   const roleMenuRef = useRef<HTMLDivElement | null>(null);
   const notificationsRef = useRef<HTMLDivElement | null>(null);
   const userDropdownRef = useRef<HTMLDivElement | null>(null);
@@ -138,14 +151,24 @@ export const Navbar: React.FC = () => {
     };
   }, [showNotifications, showUserDropdown, showRoleMenu]);
 
-  // Lắng nghe sự kiện cập nhật cấu hình từ phân hệ Cài đặt
+  // Lắng nghe sự kiện cập nhật cấu hình từ phân hệ Cài đặt và tải branding từ đám mây
   useEffect(() => {
     const handleUpdate = () => {
       const storedSchool = localStorage.getItem('geo_school_name');
       if (storedSchool) setSchoolNameInput(storedSchool);
-      const storedLogo = localStorage.getItem('geo_school_logo');
+      const storedLogo = localStorage.getItem(LOCAL_SCHOOL_LOGO_KEY);
       setSchoolLogo(storedLogo || '');
+      const storedAvatar = localStorage.getItem(LOCAL_TEACHER_AVATAR_KEY);
+      if (storedAvatar) setTeacherAvatar(storedAvatar);
     };
+
+    // Đồng bộ từ đám mây khi vào trang
+    syncBrandingFromCloud().then((data) => {
+      if (data.school_logo_url) setSchoolLogo(data.school_logo_url);
+      if (data.teacher_avatar_url) setTeacherAvatar(data.teacher_avatar_url);
+      if (data.school_name) setSchoolNameInput(data.school_name);
+    });
+
     window.addEventListener('storage', handleUpdate);
     window.addEventListener('geo_settings_updated', handleUpdate);
     return () => {
@@ -154,31 +177,40 @@ export const Navbar: React.FC = () => {
     };
   }, []);
 
-  // Xử lý đổi ảnh đại diện / Logo
+  // Xử lý đổi ảnh đại diện giáo viên (Cô Hảo)
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     setIsUploadingAvatar(true);
     try {
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const base64Url = event.target?.result as string;
-        await updateProfile({ avatar_url: base64Url });
-        setIsUploadingAvatar(false);
-      };
-      reader.readAsDataURL(file);
-
-      // Upload lên Supabase Storage nếu có kết nối
-      const filename = `avatar_${profile?.id || 'teacher'}_${Date.now()}.png`;
-      uploadToStorage('avatars', filename, file).then(({ url }) => {
-        if (url) {
-          updateProfile({ avatar_url: url });
-        }
-      });
+      const url = await uploadAndSaveTeacherAvatar(file);
+      if (url) {
+        setTeacherAvatar(url);
+        await updateProfile({ avatar_url: url });
+      }
     } catch (err) {
-      console.error('Lỗi đổi ảnh:', err);
+      console.error('Lỗi đổi ảnh đại diện:', err);
+    } finally {
       setIsUploadingAvatar(false);
+    }
+  };
+
+  // Xử lý đổi Logo trường / biểu tượng môn học
+  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingLogo(true);
+    try {
+      const url = await uploadAndSaveSchoolLogo(file);
+      if (url) {
+        setSchoolLogo(url);
+      }
+    } catch (err) {
+      console.error('Lỗi đổi logo trường:', err);
+    } finally {
+      setIsUploadingLogo(false);
     }
   };
 
@@ -189,6 +221,7 @@ export const Navbar: React.FC = () => {
 
     await updateProfile({ full_name: teacherNameInput.trim() });
     localStorage.setItem('geo_school_name', schoolNameInput.trim());
+    window.dispatchEvent(new CustomEvent('geo_settings_updated'));
 
     setShowSettingsModal(false);
     setShowUserDropdown(false);
@@ -539,6 +572,7 @@ export const Navbar: React.FC = () => {
               <div className="relative">
                 <img
                   src={
+                    teacherAvatar ||
                     profile?.avatar_url ||
                     'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=120&q=80'
                   }
@@ -565,39 +599,55 @@ export const Navbar: React.FC = () => {
 
             {/* Menu Dropdown Cài đặt & Đăng xuất */}
             {showUserDropdown && (
-              <div className="absolute right-0 mt-2 w-64 bg-white rounded-3xl shadow-2xl border border-slate-100 p-3 z-50 animate-in fade-in zoom-in-95 space-y-2">
+              <div className="absolute right-0 mt-2 w-72 bg-white rounded-3xl shadow-2xl border border-slate-100 p-3 z-50 animate-in fade-in zoom-in-95 space-y-2">
                 {/* Thông tin cô */}
-                <div className="flex items-center gap-3 p-2 bg-slate-50 rounded-2xl border border-slate-100">
+                <div className="flex items-center gap-3 p-2.5 bg-slate-50 rounded-2xl border border-slate-100">
                   <img
                     src={
+                      teacherAvatar ||
                       profile?.avatar_url ||
                       'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=120&q=80'
                     }
                     alt={profile?.full_name || 'Avatar'}
-                    className="w-11 h-11 rounded-full object-cover border border-slate-200 shrink-0"
+                    className="w-12 h-12 rounded-full object-cover border-2 border-ocean-300 shrink-0 shadow-2xs"
                   />
                   <div className="min-w-0">
                     <div className="text-xs font-bold text-slate-900 truncate">
                       {profile?.full_name || 'Dương Thu Hảo'}
                     </div>
-                    <div className="text-[11px] text-ocean-700 font-medium">
+                    <div className="text-[11px] text-ocean-700 font-medium truncate">
                       {isTeacher ? 'Giáo viên Địa lí THCS' : 'Học sinh'}
+                    </div>
+                    <div className="text-[10px] text-slate-400 font-mono truncate">
+                      {schoolNameInput}
                     </div>
                   </div>
                 </div>
 
                 {/* Danh sách chức năng trong menu */}
                 <div className="space-y-1">
-                  {/* Đổi ảnh đại diện / Logo */}
+                  {/* Đổi ảnh chân dung giáo viên */}
                   <button
                     type="button"
                     onClick={() => {
-                      fileInputRef.current?.click();
+                      fileInputAvatarRef.current?.click();
                     }}
-                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition flex items-center gap-2.5"
+                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-ocean-50 hover:text-ocean-900 transition flex items-center gap-2.5 cursor-pointer"
                   >
-                    <Camera className="w-4 h-4 text-ocean-600" />
-                    <span>{isUploadingAvatar ? 'Đang đổi ảnh...' : 'Đổi Ảnh Đại Diện / Logo'}</span>
+                    <Camera className="w-4 h-4 text-ocean-600 shrink-0" />
+                    <span>{isUploadingAvatar ? 'Đang đổi ảnh...' : 'Đổi Ảnh Chân Dung Cô Hảo'}</span>
+                  </button>
+
+                  {/* Đổi Logo trường học */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      fileInputLogoRef.current?.click();
+                    }}
+                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-ocean-50 hover:text-ocean-900 transition flex items-center gap-2.5 cursor-pointer"
+                  >
+                    <School className="w-4 h-4 text-teal-600 shrink-0" />
+                    <span>{isUploadingLogo ? 'Đang đổi logo...' : 'Đổi Logo Trường / Môn Học'}</span>
                   </button>
 
                   {/* Cài đặt thông tin */}
@@ -607,9 +657,9 @@ export const Navbar: React.FC = () => {
                       setShowSettingsModal(true);
                       setShowUserDropdown(false);
                     }}
-                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition flex items-center gap-2.5"
+                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-semibold text-slate-700 hover:bg-slate-100 hover:text-slate-900 transition flex items-center gap-2.5 cursor-pointer"
                   >
-                    <Settings className="w-4 h-4 text-slate-600" />
+                    <Settings className="w-4 h-4 text-slate-600 shrink-0" />
                     <span>Cài Đặt Thông Tin & Tên Trường</span>
                   </button>
 
@@ -619,9 +669,9 @@ export const Navbar: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleLogout}
-                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold text-red-600 hover:bg-red-50 transition flex items-center gap-2.5"
+                    className="w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold text-rose-600 hover:bg-rose-50 transition flex items-center gap-2.5 cursor-pointer"
                   >
-                    <LogOut className="w-4 h-4 text-red-500" />
+                    <LogOut className="w-4 h-4 text-rose-500 shrink-0" />
                     <span>Đăng Xuất Khỏi Hệ Thống</span>
                   </button>
                 </div>
@@ -631,23 +681,32 @@ export const Navbar: React.FC = () => {
         </div>
       </div>
 
-      {/* Input File Ẩn để Đổi Ảnh Đại Diện */}
+      {/* Input File Ẩn để Đổi Ảnh Chân Dung Giáo Viên */}
       <input
-        ref={fileInputRef}
+        ref={fileInputAvatarRef}
         type="file"
         accept="image/*"
         onChange={handleAvatarUpload}
         className="hidden"
       />
 
+      {/* Input File Ẩn để Đổi Logo Trường */}
+      <input
+        ref={fileInputLogoRef}
+        type="file"
+        accept="image/*"
+        onChange={handleLogoUpload}
+        className="hidden"
+      />
+
       {/* MODAL CÀI ĐẶT THÔNG TIN GIÁO VIÊN & TÊN TRƯỜNG */}
       {showSettingsModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in">
-          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-100 relative space-y-4">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 shadow-2xl border border-slate-100 relative space-y-4 max-h-[90vh] overflow-y-auto">
             <button
               type="button"
               onClick={() => setShowSettingsModal(false)}
-              className="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100"
+              className="absolute top-5 right-5 p-1.5 text-slate-400 hover:text-slate-600 rounded-full hover:bg-slate-100 cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -658,31 +717,79 @@ export const Navbar: React.FC = () => {
               </div>
               <div>
                 <h3 className="font-bold text-slate-900 text-base">Cài Đặt Hồ Sơ & Hệ Thống</h3>
-                <p className="text-xs text-slate-500">Cập nhật tên giáo viên và tên trường học</p>
+                <p className="text-xs text-slate-500">Cập nhật ảnh đại diện, logo và tên trường học (Tự động lưu đám mây)</p>
               </div>
             </div>
 
             <form onSubmit={handleSaveSettings} className="space-y-4">
-              {/* Ảnh đại diện / Logo */}
-              <div className="flex items-center gap-4 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
-                <img
-                  src={
-                    profile?.avatar_url ||
-                    'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=120&q=80'
-                  }
-                  alt="Avatar"
-                  className="w-14 h-14 rounded-full object-cover border-2 border-ocean-400 shrink-0"
-                />
-                <div className="space-y-1">
-                  <div className="text-xs font-bold text-slate-800">Ảnh chân dung / Logo trường</div>
+              {/* Ảnh Chân Dung Giáo Viên */}
+              <div className="flex items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <div className="flex items-center gap-3">
+                  <img
+                    src={
+                      teacherAvatar ||
+                      profile?.avatar_url ||
+                      'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=120&q=80'
+                    }
+                    alt="Avatar"
+                    className="w-12 h-12 rounded-full object-cover border-2 border-ocean-400 shrink-0 shadow-2xs"
+                  />
+                  <div>
+                    <div className="text-xs font-bold text-slate-800">Ảnh chân dung Cô Hảo</div>
+                    <div className="text-[11px] text-slate-500">Hiển thị ở góc trên, sidebar và lời phê</div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => fileInputAvatarRef.current?.click()}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-ocean-50 hover:text-ocean-800 transition shadow-2xs cursor-pointer shrink-0"
+                >
+                  <Camera className="w-3.5 h-3.5 text-ocean-600" />
+                  <span>Đổi Ảnh</span>
+                </button>
+              </div>
+
+              {/* Logo Trường Học */}
+              <div className="flex items-center justify-between gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+                <div className="flex items-center gap-3">
+                  {schoolLogo ? (
+                    <img
+                      src={schoolLogo}
+                      alt="Logo Trường"
+                      className="w-12 h-12 rounded-2xl object-cover border border-slate-300 shrink-0 bg-white shadow-2xs"
+                    />
+                  ) : (
+                    <div className="w-12 h-12 rounded-2xl bg-ocean-100 text-ocean-700 flex items-center justify-center font-black text-xs border border-ocean-200 shrink-0">
+                      LOGO
+                    </div>
+                  )}
+                  <div>
+                    <div className="text-xs font-bold text-slate-800">Logo / Huy hiệu trường</div>
+                    <div className="text-[11px] text-slate-500">Hiển thị ở góc trái Navbar và chân trang</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
                   <button
                     type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition shadow-xs"
+                    onClick={() => fileInputLogoRef.current?.click()}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-300 text-xs font-semibold text-slate-700 hover:bg-ocean-50 hover:text-ocean-800 transition shadow-2xs cursor-pointer"
                   >
-                    <Camera className="w-3.5 h-3.5 text-ocean-600" />
-                    Tải ảnh mới từ máy tính
+                    <School className="w-3.5 h-3.5 text-teal-600" />
+                    <span>Đổi Logo</span>
                   </button>
+                  {schoolLogo && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        saveSchoolLogo('');
+                        setSchoolLogo('');
+                      }}
+                      className="p-1.5 rounded-xl text-rose-600 hover:bg-rose-50 border border-rose-200 transition cursor-pointer"
+                      title="Xóa logo trường về biểu tượng mặc định"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -710,7 +817,7 @@ export const Navbar: React.FC = () => {
                   type="text"
                   value={schoolNameInput}
                   onChange={(e) => setSchoolNameInput(e.target.value)}
-                  placeholder="VD: Trường THCS..."
+                  placeholder="VD: Trường PTDTBT TH&THCS Sì Lở Lầu..."
                   className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-xs sm:text-sm font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-ocean-500"
                   required
                 />
@@ -720,13 +827,13 @@ export const Navbar: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => setShowSettingsModal(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100"
+                  className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-100 cursor-pointer"
                 >
                   Hủy Bỏ
                 </button>
                 <button
                   type="submit"
-                  className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-ocean-600 hover:bg-ocean-700 active:scale-95 text-white text-xs font-bold shadow-xs transition"
+                  className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-ocean-600 hover:bg-ocean-700 active:scale-95 text-white text-xs font-bold shadow-xs transition cursor-pointer"
                 >
                   <CheckCircle2 className="w-4 h-4" />
                   Lưu Thay Đổi Ngay

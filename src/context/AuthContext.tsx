@@ -2,6 +2,11 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { Profile, UserRole } from '../types/database';
 import { getStoredStudents } from '../data/studentsData';
+import {
+  LOCAL_TEACHER_AVATAR_KEY,
+  saveTeacherAvatar,
+  syncBrandingFromCloud,
+} from '../lib/brandingSync';
 
 interface AuthContextType {
   user: any | null;
@@ -30,6 +35,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     async function initAuth() {
       try {
+        // Tải ảnh đại diện & logo từ đám mây trước khi nạp profile
+        await syncBrandingFromCloud();
+
         if (isSupabaseConfigured) {
           const { data: { session } } = await supabase.auth.getSession();
           if (session?.user) {
@@ -68,8 +76,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const loadFromLocalStorage = () => {
     try {
       const storedProfile = localStorage.getItem(LOCAL_STORAGE_PROFILE_KEY);
+      const storedTeacherAvatar = localStorage.getItem(LOCAL_TEACHER_AVATAR_KEY);
       if (storedProfile) {
         const parsed = JSON.parse(storedProfile);
+        if (parsed.role === 'teacher' && storedTeacherAvatar) {
+          parsed.avatar_url = storedTeacherAvatar;
+        }
         setProfile(parsed);
         setUser({ id: parsed.id, email: `${parsed.username}@diali.edu.vn` });
       } else {
@@ -91,6 +103,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         .single();
 
       if (data && !error) {
+        const storedTeacherAvatar = localStorage.getItem(LOCAL_TEACHER_AVATAR_KEY);
+        if (data.role === 'teacher' && storedTeacherAvatar) {
+          data.avatar_url = storedTeacherAvatar;
+        }
         setProfile(data as Profile);
         localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(data));
       }
@@ -110,6 +126,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const newProfile = { ...profile, ...updatedData };
     setProfile(newProfile);
     localStorage.setItem(LOCAL_STORAGE_PROFILE_KEY, JSON.stringify(newProfile));
+
+    if (updatedData.avatar_url && (profile.role === 'teacher' || newProfile.role === 'teacher')) {
+      await saveTeacherAvatar(updatedData.avatar_url);
+    }
 
     if (isSupabaseConfigured && profile.id && !profile.id.startsWith('teacher-')) {
       try {
@@ -181,6 +201,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
       // 3. Xác thực thành công tài khoản Giáo viên (Cô Dương Thu Hảo)
       const username = cleanEmail.includes('@') ? cleanEmail.split('@')[0] : cleanEmail;
+      const storedTeacherAvatar = localStorage.getItem(LOCAL_TEACHER_AVATAR_KEY);
+      const defaultTeacherAvatar = 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=200&q=80';
       const teacherProfile: Profile = {
         id: 'teacher-duong-thu-hao',
         username: username || 'duongthuhao_diali',
@@ -188,7 +210,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: 'teacher',
         xp: 0,
         level: 1,
-        avatar_url: profile?.avatar_url || 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=200&q=80',
+        avatar_url: storedTeacherAvatar || profile?.avatar_url || defaultTeacherAvatar,
       };
 
       setProfile(teacherProfile);
@@ -293,6 +315,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   // Chuyển đổi vai trò nhanh
   const quickLogin = (newRole: UserRole, customName?: string, grade: number = 6) => {
     let mockProfile: Profile;
+    const storedTeacherAvatar = localStorage.getItem(LOCAL_TEACHER_AVATAR_KEY);
+    const defaultTeacherAvatar = 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=200&q=80';
     if (newRole === 'teacher' || newRole === 'admin') {
       mockProfile = {
         id: 'teacher-duong-thu-hao-main',
@@ -301,7 +325,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         role: 'teacher',
         xp: 0,
         level: 1,
-        avatar_url: profile?.avatar_url || 'https://images.unsplash.com/photo-1544717305-2782549b5136?auto=format&fit=crop&w=200&q=80',
+        avatar_url: storedTeacherAvatar || profile?.avatar_url || defaultTeacherAvatar,
       };
     } else {
       mockProfile = {

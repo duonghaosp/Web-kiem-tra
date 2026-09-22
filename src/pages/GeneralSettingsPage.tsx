@@ -26,6 +26,15 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { triggerCelebration } from '../lib/gamification';
+import {
+  uploadAndSaveTeacherAvatar,
+  uploadAndSaveSchoolLogo,
+  saveTeacherAvatar,
+  saveSchoolLogo,
+  LOCAL_TEACHER_AVATAR_KEY,
+  LOCAL_SCHOOL_LOGO_KEY,
+  syncBrandingFromCloud,
+} from '../lib/brandingSync';
 
 export const GeneralSettingsPage: React.FC = () => {
   const { profile, updateProfile } = useAuth();
@@ -79,9 +88,9 @@ export const GeneralSettingsPage: React.FC = () => {
     () => localStorage.getItem('geo_default_feedback') || 'Cô khen ngợi tinh thần làm bài chăm chỉ của em!'
   );
 
-  // Tự động tải mật khẩu giáo viên từ Supabase Cloud khi vào trang
+  // Tự động tải mật khẩu giáo viên và thương hiệu từ Supabase Cloud khi vào trang
   useEffect(() => {
-    async function loadCloudTeacherSecurity() {
+    async function loadCloudSettings() {
       if (isSupabaseConfigured) {
         try {
           const { data } = await supabase
@@ -97,8 +106,14 @@ export const GeneralSettingsPage: React.FC = () => {
           console.warn('Lỗi tải teacher_security:', e);
         }
       }
+
+      // Tải logo & avatar mới nhất từ cloud
+      syncBrandingFromCloud().then((data) => {
+        if (data.school_logo_url) setSchoolLogoUrl(data.school_logo_url);
+        if (data.school_name) setSchoolName(data.school_name);
+      });
     }
-    loadCloudTeacherSecurity();
+    loadCloudSettings();
   }, []);
 
   // 3. Cấu hình kiểm tra & đánh giá
@@ -135,38 +150,29 @@ export const GeneralSettingsPage: React.FC = () => {
   const fileInputBannerRef = useRef<HTMLInputElement | null>(null);
 
   // Upload Logo
-  const handleUploadLogo = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadLogo = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const url = event.target?.result as string;
+    const url = await uploadAndSaveSchoolLogo(file);
+    if (url) {
       setSchoolLogoUrl(url);
-      localStorage.setItem('geo_school_logo', url);
-      window.dispatchEvent(new Event('storage'));
-      window.dispatchEvent(new CustomEvent('geo_settings_updated'));
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   // Xóa Logo / Đặt lại mặc định
-  const handleRemoveLogo = () => {
+  const handleRemoveLogo = async () => {
     setSchoolLogoUrl('');
-    localStorage.removeItem('geo_school_logo');
-    window.dispatchEvent(new Event('storage'));
-    window.dispatchEvent(new CustomEvent('geo_settings_updated'));
+    await saveSchoolLogo('');
   };
 
   // Upload Avatar
-  const handleUploadAvatar = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleUploadAvatar = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const url = event.target?.result as string;
+    const url = await uploadAndSaveTeacherAvatar(file);
+    if (url) {
       await updateProfile({ avatar_url: url });
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   // Upload Banner
@@ -294,8 +300,13 @@ export const GeneralSettingsPage: React.FC = () => {
       localStorage.setItem('geo_banner_subtitle', bannerSubtitle.trim());
       localStorage.setItem('geo_banner_bg', bannerBgUrl);
 
-      // 2. Cập nhật Profile Auth
+      // 2. Cập nhật Profile Auth & Logo
       await updateProfile({ full_name: teacherName.trim() });
+      await saveSchoolLogo(schoolLogoUrl);
+      const currentTeacherAvatar = localStorage.getItem(LOCAL_TEACHER_AVATAR_KEY) || profile?.avatar_url || '';
+      if (currentTeacherAvatar) {
+        await saveTeacherAvatar(currentTeacherAvatar);
+      }
 
       // 3. Đồng bộ lên Supabase (nếu có kết nối)
       if (isSupabaseConfigured) {
@@ -311,6 +322,8 @@ export const GeneralSettingsPage: React.FC = () => {
               bannerTitle: bannerTitle.trim(),
               bannerSubtitle: bannerSubtitle.trim(),
               bannerBgUrl,
+              schoolLogoUrl: schoolLogoUrl || '',
+              teacherAvatarUrl: currentTeacherAvatar,
             },
           });
         } catch (err) {
