@@ -23,6 +23,7 @@ import {
   CheckSquare,
   Square,
   Eraser,
+  ArrowUpDown,
 } from 'lucide-react';
 import { ClassItem, Profile } from '../types/database';
 import { GrantXpModal } from '../components/gamification/GrantXpModal';
@@ -650,23 +651,33 @@ export const ClassesManagementPage: React.FC = () => {
     XLSX.writeFile(wb, `Mau_Danh_Sach_Hoc_Sinh_${currentClass.name}.xlsx`);
   };
 
-  // LỌC HỌC SINH: CHỈ HIỂN THỊ HỌC SINH CỦA ĐÚNG LỚP ĐANG ĐƯỢC CHỌN (SẮP XẾP CHUẨN A - Z THEO TÊN)
-  const filteredStudents = useMemo(() => {
-    return students
-      .filter((s) => {
-        // 1. Phải thuộc đúng lớp đang chọn
-        const isSameClass = s.class_name === currentClass.name;
-        if (!isSameClass) return false;
+  // Sắp xếp danh sách học sinh của lớp hiện tại theo chuẩn Tiếng Việt A-Z (Nếu cô muốn chủ động sắp xếp)
+  const handleSortClassAZ = () => {
+    const classStudents = students.filter((s) => s.class_name === currentClass.name);
+    if (classStudents.length === 0) return;
+    const sorted = [...classStudents].sort((a, b) => compareVietnameseNames(a.full_name, b.full_name));
+    const otherStudents = students.filter((s) => s.class_name !== currentClass.name);
+    const combined = [...otherStudents, ...sorted];
+    const reindexed = reindexAllStudentCodes(combined, classes);
+    saveStudents(reindexed);
+    alert(`✅ Đã sắp xếp lại danh sách học sinh của ${currentClass.name} chuẩn theo bảng chữ cái Tiếng Việt A-Z!`);
+  };
 
-        // 2. Lọc theo từ khóa tìm kiếm
-        if (!searchTerm.trim()) return true;
-        const term = searchTerm.toLowerCase();
-        return (
-          s.full_name.toLowerCase().includes(term) ||
-          (s.student_code && s.student_code.toLowerCase().includes(term))
-        );
-      })
-      .sort((a, b) => compareVietnameseNames(a.full_name, b.full_name));
+  // LỌC HỌC SINH: GIỮ NGUYÊN 100% THỨ TỰ TỪ TRÊN XUỐNG DƯỚI CỦA FILE EXCEL KHI IMPORT
+  const filteredStudents = useMemo(() => {
+    return students.filter((s) => {
+      // 1. Phải thuộc đúng lớp đang chọn
+      const isSameClass = s.class_name === currentClass.name;
+      if (!isSameClass) return false;
+
+      // 2. Lọc theo từ khóa tìm kiếm
+      if (!searchTerm.trim()) return true;
+      const term = searchTerm.toLowerCase();
+      return (
+        s.full_name.toLowerCase().includes(term) ||
+        (s.student_code && s.student_code.toLowerCase().includes(term))
+      );
+    });
   }, [students, currentClass.name, searchTerm]);
 
   return (
@@ -833,6 +844,15 @@ export const ClassesManagementPage: React.FC = () => {
 
             {/* Các nút thao tác */}
             <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={handleSortClassAZ}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 text-xs font-bold transition active:scale-95 cursor-pointer"
+                title="Sắp xếp lại danh sách học sinh của lớp này theo thứ tự bảng chữ cái Tiếng Việt A-Z"
+              >
+                <ArrowUpDown className="w-3.5 h-3.5 text-indigo-600" /> Sắp Xếp A-Z
+              </button>
+
               <button
                 type="button"
                 onClick={handleReindexGradeCodes}

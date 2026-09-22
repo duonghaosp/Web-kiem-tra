@@ -103,15 +103,20 @@ export const removeVietnameseTones = (str: string): string => {
 
 /**
  * HÀM SO SÁNH HỌ VÀ TÊN THEO CHUẨN TIẾNG VIỆT:
- * 1. So sánh TÊN gọi (từ cuối cùng trong họ và tên) theo bảng chữ cái A-Z
- * 2. Nếu cùng Tên -> So sánh Họ và Tên đệm
+ * 1. Loại bỏ các ghi chú trong ngoặc như (16/6), (9/8)... trước khi lấy Tên
+ * 2. So sánh TÊN gọi (từ cuối cùng trong họ và tên) theo bảng chữ cái A-Z
+ * 3. Nếu cùng Tên -> So sánh Họ và Tên đệm
  */
 export const compareVietnameseNames = (nameA: string, nameB: string): number => {
   if (!nameA) return -1;
   if (!nameB) return 1;
 
-  const partsA = nameA.trim().split(/\s+/);
-  const partsB = nameB.trim().split(/\s+/);
+  // Loại bỏ các ghi chú trong ngoặc đơn như (16/6), (9/8), (A)... khi trích xuất tên
+  const cleanA = nameA.replace(/\(.*?\)/g, '').trim();
+  const cleanB = nameB.replace(/\(.*?\)/g, '').trim();
+
+  const partsA = cleanA.split(/\s+/);
+  const partsB = cleanB.split(/\s+/);
 
   const firstNameA = partsA[partsA.length - 1] || '';
   const firstNameB = partsB[partsB.length - 1] || '';
@@ -121,12 +126,15 @@ export const compareVietnameseNames = (nameA: string, nameB: string): number => 
 
   const restA = partsA.slice(0, partsA.length - 1).join(' ');
   const restB = partsB.slice(0, partsB.length - 1).join(' ');
-  return restA.localeCompare(restB, 'vi', { sensitivity: 'base' });
+  const cmpRest = restA.localeCompare(restB, 'vi', { sensitivity: 'base' });
+  if (cmpRest !== 0) return cmpRest;
+
+  return nameA.localeCompare(nameB, 'vi', { sensitivity: 'base' });
 };
 
 /**
  * HÀM ĐÁNH LẠI MÃ HỌC SINH TỰ ĐỘNG THEO SỐ LƯỢNG THỰC TẾ CỦA TỪNG LỚP:
- * - Tự động sắp xếp học sinh trong từng lớp theo chuẩn Tiếng Việt (A - Z theo Tên).
+ * - GIỮ NGUYÊN 100% THỨ TỰ TỪ TRÊN XUỐNG DƯỚI CỦA FILE EXCEL KHI IMPORT (Không đảo lộn thứ tự của sổ điểm).
  * - Đánh số liên tục từ 1 đến N trong khối (Khối 6: HS06..., Khối 7: HS07..., Khối 8: HS08..., Khối 9: HS09...).
  * - Đảm bảo thứ tự hiển thị trong Sổ Điểm, Dropdown làm bài và Bảng Báo Cáo trùng khớp 100%.
  */
@@ -147,10 +155,8 @@ export const reindexAllStudentCodes = (
       .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 
     gradeClasses.forEach((cls) => {
-      // Lấy danh sách học sinh THỰC TẾ thuộc lớp này VÀ sắp xếp chuẩn Tiếng Việt A-Z
-      const classStudents = studentsList
-        .filter((s) => s.class_name === cls.name)
-        .sort((a, b) => compareVietnameseNames(a.full_name, b.full_name));
+      // Lấy danh sách học sinh thuộc lớp này THEO ĐÚNG THỨ TỰ NHẬP / FILE EXCEL BAN ĐẦU
+      const classStudents = studentsList.filter((s) => s.class_name === cls.name);
 
       classStudents.forEach((st) => {
         const studentCode = `${prefix}${gradeCounter}`;
@@ -165,13 +171,11 @@ export const reindexAllStudentCodes = (
     });
 
     // Gom cả các học sinh cùng khối nhưng không khớp tên lớp chuẩn (nếu có)
-    const otherGradeStudents = studentsList
-      .filter(
-        (s) =>
-          Number(s.grade) === Number(g) &&
-          !gradeClasses.some((c) => c.name === s.class_name)
-      )
-      .sort((a, b) => compareVietnameseNames(a.full_name, b.full_name));
+    const otherGradeStudents = studentsList.filter(
+      (s) =>
+        Number(s.grade) === Number(g) &&
+        !gradeClasses.some((c) => c.name === s.class_name)
+    );
 
     otherGradeStudents.forEach((st) => {
       const studentCode = `${prefix}${gradeCounter}`;

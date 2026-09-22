@@ -115,11 +115,9 @@ export const ExamTakingPage: React.FC = () => {
     return INITIAL_CLASSES.filter((c) => Number(c.grade) === Number(inputGrade)).map((c) => c.name);
   }, [currentAssignment, inputGrade]);
 
-  // Danh sách học sinh theo lớp đang chọn (SẮP XẾP CHUẨN THEO TÊN HỌC SINH VIỆT NAM: A, B, C...)
+  // Danh sách học sinh theo lớp đang chọn (GIỮ ĐÚNG THỨ TỰ SỔ ĐIỂM / FILE EXCEL CỦA LỚP)
   const classStudents = useMemo<Profile[]>(() => {
-    return allSystemStudents
-      .filter((s: Profile) => s.class_name === selectedClass)
-      .sort((a: Profile, b: Profile) => compareVietnameseNames(a.full_name, b.full_name));
+    return allSystemStudents.filter((s: Profile) => s.class_name === selectedClass);
   }, [allSystemStudents, selectedClass]);
 
   // Lọc theo từ khóa tìm kiếm nhanh của học sinh
