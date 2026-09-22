@@ -439,7 +439,7 @@ export const ClassesManagementPage: React.FC = () => {
       .replace(/[^a-z0-9]/g, '');
   };
 
-  // Import học sinh từ file Excel SIÊU THÔNG MINH (Hỗ trợ vnEdu, SMAS, file ghép Họ + Tên, file có dòng tiêu đề trường...)
+  // Import học sinh từ file Excel SIÊU THÔNG MINH (Hỗ trợ 100% định dạng: vnEdu, SMAS, file không tiêu đề, file nhiều dòng tiêu đề...)
   const handleImportStudentsExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -458,75 +458,95 @@ export const ClassesManagementPage: React.FC = () => {
         return;
       }
 
-      let headerRowIndex = -1;
       let fullNameCol = -1;
       let hoDemCol = -1;
       let tenCol = -1;
       let codeCol = -1;
       let usernameCol = -1;
 
-      // 1. Tự động quét từ dòng 0 đến dòng 15 để tìm dòng tiêu đề chuẩn
-      for (let r = 0; r < Math.min(rawRows.length, 15); r++) {
+      // 1. Quét tìm các cột thông qua từ khóa tiêu đề (tìm trong 20 dòng đầu)
+      for (let r = 0; r < Math.min(rawRows.length, 20); r++) {
         const row = rawRows[r];
         if (!Array.isArray(row)) continue;
 
-        let foundAnyHeader = false;
         row.forEach((cell, cIdx) => {
           const text = String(cell || '').trim().toLowerCase();
+          if (!text) return;
+
           if (
             text === 'họ và tên' ||
             text === 'họ tên' ||
+            text === 'họ & tên' ||
             text === 'họ và tên học sinh' ||
             text === 'tên học sinh' ||
             text === 'họ và tên hs' ||
             text === 'full name' ||
-            text === 'fullname'
+            text === 'fullname' ||
+            text === 'họ tên hs'
           ) {
-            fullNameCol = cIdx;
-            foundAnyHeader = true;
-          } else if (text === 'họ và đệm' || text === 'họ đệm' || text === 'họ' || text === 'họ và tên đệm') {
-            hoDemCol = cIdx;
-            foundAnyHeader = true;
-          } else if (text === 'tên' || text === 'tên hs') {
-            tenCol = cIdx;
-            foundAnyHeader = true;
-          } else if (text.includes('mã học sinh') || text.includes('mã hs') || text.includes('mã định danh') || text === 'student code' || text === 'code') {
-            codeCol = cIdx;
-            foundAnyHeader = true;
-          } else if (text.includes('tên đăng nhập') || text.includes('tài khoản') || text === 'username') {
-            usernameCol = cIdx;
-            foundAnyHeader = true;
+            if (fullNameCol === -1) fullNameCol = cIdx;
+          } else if (
+            text === 'họ và đệm' ||
+            text === 'họ đệm' ||
+            text === 'họ' ||
+            text === 'họ và tên đệm' ||
+            text === 'họ đệm hs'
+          ) {
+            if (hoDemCol === -1) hoDemCol = cIdx;
+          } else if (text === 'tên' || text === 'tên hs' || text === 'tên gọi') {
+            if (tenCol === -1) tenCol = cIdx;
+          } else if (
+            text.includes('mã học sinh') ||
+            text.includes('mã hs') ||
+            text.includes('mã định danh') ||
+            text === 'student code' ||
+            text === 'code' ||
+            text === 'mã'
+          ) {
+            if (codeCol === -1) codeCol = cIdx;
+          } else if (
+            text.includes('tên đăng nhập') ||
+            text.includes('tài khoản') ||
+            text === 'username' ||
+            text === 'user'
+          ) {
+            if (usernameCol === -1) usernameCol = cIdx;
           }
         });
 
-        if (foundAnyHeader && (fullNameCol !== -1 || (hoDemCol !== -1 && tenCol !== -1))) {
-          headerRowIndex = r;
+        if (fullNameCol !== -1 || (hoDemCol !== -1 && tenCol !== -1)) {
           break;
         }
       }
 
-      // 2. Nếu không có dòng tiêu đề rõ ràng, tự động quét tìm cột chứa chuỗi Họ Tên tiếng Việt
-      if (headerRowIndex === -1 && fullNameCol === -1) {
-        for (let c = 0; c < 10; c++) {
-          let nameLikeCount = 0;
-          for (let r = 0; r < Math.min(rawRows.length, 10); r++) {
+      // 2. Nếu không tìm thấy cột bằng tiêu đề, tự động quét tìm cột chứa Họ Tên tiếng Việt
+      if (fullNameCol === -1 && (hoDemCol === -1 || tenCol === -1)) {
+        let bestNameCol = -1;
+        let maxNameScore = 0;
+
+        for (let c = 0; c < 20; c++) {
+          let score = 0;
+          for (let r = 0; r < Math.min(rawRows.length, 30); r++) {
             const val = String(rawRows[r]?.[c] || '').trim();
-            if (val.length > 3 && val.includes(' ') && !/\d/.test(val)) {
-              nameLikeCount++;
+            // Chuỗi họ tên: có độ dài >= 3, không chỉ là số
+            if (val.length >= 3 && !/^\d+$/.test(val) && (val.includes(' ') || /[a-zA-Zà-ỹÀ-Ỹ]/.test(val))) {
+              score++;
             }
           }
-          if (nameLikeCount >= 2) {
-            fullNameCol = c;
-            headerRowIndex = 0; // Bắt đầu đọc từ dòng đầu tiên có tên
-            break;
+          if (score > maxNameScore && score >= 2) {
+            maxNameScore = score;
+            bestNameCol = c;
           }
+        }
+        if (bestNameCol !== -1) {
+          fullNameCol = bestNameCol;
         }
       }
 
       const newImportedStudents: Profile[] = [];
-      const startRow = headerRowIndex !== -1 ? headerRowIndex + 1 : 0;
 
-      for (let r = startRow; r < rawRows.length; r++) {
+      // 3. Đọc từ dòng 0 đến hết, kiểm tra từng dòng xem có phải học sinh hay không
+      for (let r = 0; r < rawRows.length; r++) {
         const row = rawRows[r];
         if (!Array.isArray(row) || row.length === 0) continue;
 
@@ -536,20 +556,51 @@ export const ClassesManagementPage: React.FC = () => {
         } else if (hoDemCol !== -1 && tenCol !== -1) {
           const ho = String(row[hoDemCol] || '').trim();
           const ten = String(row[tenCol] || '').trim();
-          if (ho || ten) fullName = `${ho} ${ten}`.trim();
+          if (ho && ten) fullName = `${ho} ${ten}`.trim();
+          else if (ten) fullName = ten;
+          else if (ho) fullName = ho;
+        } else if (fullNameCol !== -1) {
+          for (let c = 0; c < row.length; c++) {
+            const candidate = String(row[c] || '').trim();
+            if (candidate.length >= 3 && candidate.includes(' ') && !/^\d+$/.test(candidate)) {
+              fullName = candidate;
+              break;
+            }
+          }
         }
 
-        // Bỏ qua các dòng không phải tên học sinh (như dòng tổng số, người lập, ban giám hiệu...)
-        if (!fullName || fullName.length < 2 || /^(tổng số|người lập|giáo viên|hiệu trưởng|ghi chú|stt|tt)/i.test(fullName)) {
+        // Làm sạch họ và tên: Xóa số thứ tự đầu dòng nếu có (ví dụ "1. Nguyễn Văn A" -> "Nguyễn Văn A")
+        fullName = fullName.replace(/^\d+[\.\-\s]+/, '').trim();
+
+        if (!fullName || fullName.length < 2) continue;
+
+        // Bỏ qua các dòng tiêu đề, thông tin trường/lớp/tổng số
+        const lowerName = fullName.toLowerCase();
+        const isHeaderOrMeta =
+          /^(stt|tt|số tt|thứ tự|mã|mã hs|mã học sinh|mã định danh|họ và tên|họ tên|họ & tên|họ và đệm|họ đệm|tên|tên học sinh|ngày sinh|giới tính|dân tộc|địa chỉ|nơi sinh|lớp|khối|năm học|trường|phòng giáo dục|bộ giáo dục|sở giáo dục|danh sách|danh sách học sinh|bảng điểm|tổng số|người lập|giáo viên|hiệu trưởng|ban giám hiệu|ghi chú|kết quả|xếp loại|điểm số)$/i.test(
+            lowerName
+          ) ||
+          lowerName.startsWith('tổng số') ||
+          lowerName.startsWith('danh sách học sinh') ||
+          lowerName.startsWith('trường th') ||
+          lowerName.startsWith('trường ptdtbt') ||
+          lowerName.startsWith('bộ giáo dục') ||
+          lowerName.startsWith('sở giáo dục') ||
+          lowerName.startsWith('phòng giáo dục') ||
+          lowerName.startsWith('giáo viên phụ trách') ||
+          lowerName.startsWith('người lập biểu') ||
+          /^\d+$/.test(fullName);
+
+        if (isHeaderOrMeta) {
           continue;
         }
 
         const customCode = codeCol !== -1 && row[codeCol] ? String(row[codeCol]).trim() : '';
         const customUsername = usernameCol !== -1 && row[usernameCol] ? String(row[usernameCol]).trim() : '';
-        const cleanUname = customUsername || `${removeVietnameseTones(fullName)}${gradeFilter}${r + 1}`;
+        const cleanUname = customUsername || `${removeVietnameseTones(fullName)}${gradeFilter}${newImportedStudents.length + 1}`;
 
         newImportedStudents.push({
-          id: 's_imp_' + Date.now() + '_' + r,
+          id: 's_imp_' + Date.now() + '_' + r + '_' + newImportedStudents.length,
           student_code: customCode || `HS0${gradeFilter}${newImportedStudents.length + 1}`,
           full_name: fullName,
           username: cleanUname,
@@ -569,13 +620,13 @@ export const ClassesManagementPage: React.FC = () => {
         return;
       }
 
-      // Lọc bỏ học sinh cũ của riêng lớp này trước khi nạp mới hoặc nạp bổ sung
+      // Lọc bỏ học sinh cũ của riêng lớp này trước khi nạp mới
       const otherStudents = students.filter((s) => s.class_name !== currentClass.name);
       const combined = [...otherStudents, ...newImportedStudents];
       const reindexed = reindexAllStudentCodes(combined, classes);
       saveStudents(reindexed);
 
-      alert(`🎉 Đã import thành công ${newImportedStudents.length} học sinh vào ${currentClass.name} và tự động đánh mã liên tục!`);
+      alert(`🎉 Đã import thành công ĐẦY ĐỦ ${newImportedStudents.length} học sinh vào ${currentClass.name} và tự động đánh mã liên tục!`);
     } catch (err) {
       console.error('Lỗi khi đọc file Excel:', err);
       alert('Đã xảy ra lỗi khi đọc file Excel. Cô vui lòng thử lại hoặc tải file mẫu để kiểm tra nhé!');
