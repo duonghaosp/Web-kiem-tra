@@ -107,14 +107,10 @@ export const Sidebar: React.FC = () => {
             </div>
           </div>
 
-          <div className="font-black text-sm sm:text-base tracking-tight text-white flex items-center gap-1 justify-center">
-            <span className="text-[#C9942C] font-black text-lg">Đ</span>ỊA LÍ THCS
-          </div>
-
-          {/* Dòng chữ ký nghệ thuật Hảo Địa lí siêu rõ chữ, siêu sắc nét */}
+          {/* Dòng chữ nghệ thuật Hảo Địa lí siêu rõ chữ, sắc nét */}
           <div className="mt-1 flex items-center justify-center gap-1.5">
             <span
-              className="font-script text-xl sm:text-2xl font-bold text-[#E5B24D] drop-shadow-md tracking-wide select-none leading-none"
+              className="font-script text-2xl sm:text-3xl font-bold text-[#E5B24D] drop-shadow-md tracking-wide select-none leading-none"
               style={{ fontFamily: "'Dancing Script', 'Caveat', cursive" }}
             >
               Hảo Địa lí
