@@ -243,14 +243,23 @@ export const INITIAL_STUDENTS: Profile[] = generateInitialRealStudents();
 
 // Lấy danh sách học sinh từ LocalStorage và đánh số lại mã HS liên tục dựa trên học sinh hiện có
 export const getStoredStudents = (): Profile[] => {
+  const DATA_VERSION_KEY = 'geo_students_data_version';
+  const CURRENT_VERSION = 'v5_clean_real_2026';
+
   try {
+    const savedVersion = localStorage.getItem(DATA_VERSION_KEY);
+    if (savedVersion !== CURRENT_VERSION) {
+      localStorage.setItem(DATA_VERSION_KEY, CURRENT_VERSION);
+      localStorage.setItem('geo_classes_students', JSON.stringify(INITIAL_STUDENTS));
+      return INITIAL_STUDENTS;
+    }
+
     const saved = localStorage.getItem('geo_classes_students');
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed) && parsed.length > 0) {
+      if (Array.isArray(parsed)) {
         // Lọc bỏ bất kỳ học sinh giả nào bị chèn nhầm ở Khối 6 và Khối 8 nếu có tiền tố s_6_ hoặc s_8_
         const cleaned = parsed.filter((s: Profile) => {
-          // Giữ lại tất cả học sinh Khối 7 & 9, và bất kỳ học sinh nào do cô tự thêm (id không phải dạng s_6_ tự tạo)
           if (s.grade === 6 || s.grade === 8) {
             return !s.id.startsWith('s_6_') && !s.id.startsWith('s_8_');
           }

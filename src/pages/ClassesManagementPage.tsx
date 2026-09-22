@@ -140,12 +140,12 @@ export const ClassesManagementPage: React.FC = () => {
 
   // Khôi phục 16 lớp THCS mặc định nếu bị xóa nhầm
   const handleResetDefaultClasses = () => {
-    if (confirm('Cô có muốn khôi phục lại danh sách 16 lớp chuẩn và 624 học sinh với mã số liên tục theo khối không?')) {
+    if (confirm('Cô có muốn khôi phục lại danh sách 16 lớp chuẩn và danh sách học sinh thực tế của Khối 7 & 9 không?')) {
       saveClasses(INITIAL_CLASSES);
       saveStudents(INITIAL_STUDENTS);
-      setSelectedClassId('c_6a1');
-      setGradeFilter(6);
-      alert('Đã khôi phục thành công 16 lớp THCS và toàn bộ mã học sinh chuẩn liên tục!');
+      setSelectedClassId('c_9a1');
+      setGradeFilter(9);
+      alert('Đã khôi phục thành công 16 lớp THCS và danh sách học sinh thực tế!');
     }
   };
 
