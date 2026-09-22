@@ -1570,61 +1570,6 @@ ${studentListText}
         </div>
       </div>
 
-      {/* 2.2. THANH CHỌN LỚP NHANH TOÀN CỤC (GLOBAL CLASS PILLS SELECTOR) */}
-      <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs space-y-2">
-        <div className="flex items-center justify-between text-xs">
-          <div className="flex items-center gap-1.5 font-black text-slate-700">
-            <Users className="w-4 h-4 text-ocean-600" />
-            <span>Lọc Nhanh Theo Lớp Học ({classesList.length} Lớp):</span>
-          </div>
-          <span className="text-[11px] text-slate-400">
-            Bấm 1 click để chỉ xem đề thi & học sinh của đúng lớp đó
-          </span>
-        </div>
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-thin flex-wrap sm:flex-nowrap">
-          <button
-            type="button"
-            onClick={() => {
-              setClassFilter('all');
-              setGradeFilter('all');
-            }}
-            className={`px-3 py-1.5 rounded-xl text-xs font-black transition cursor-pointer shrink-0 ${
-              classFilter === 'all'
-                ? 'bg-ocean-600 text-white shadow-xs ring-2 ring-ocean-200'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200'
-            }`}
-          >
-            🏫 Tất Cả ({classesList.length} Lớp)
-          </button>
-          {classesList.map((c) => {
-            const isSelected = isSameClass(classFilter, c.name);
-            const classSubCount = submissions.filter((s) => isSameClass(s.class_name, c.name)).length;
-            return (
-              <button
-                key={c.id || c.name}
-                type="button"
-                onClick={() => handleClassChange(c.name)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition cursor-pointer shrink-0 flex items-center gap-1.5 ${
-                  isSelected
-                    ? 'bg-ocean-600 text-white shadow-xs ring-2 ring-ocean-200 font-black'
-                    : 'bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200'
-                }`}
-              >
-                <span>{c.name}</span>
-                {classSubCount > 0 && (
-                  <span
-                    className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full font-black ${
-                      isSelected ? 'bg-white/30 text-white' : 'bg-ocean-100 text-ocean-800'
-                    }`}
-                  >
-                    {classSubCount}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
       {/* 3. TAB PHÂN LOẠI TRẠNG THÁI VÀ CHUYỂN ĐỔI CHẾ ĐỘ XEM */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 pb-2">
