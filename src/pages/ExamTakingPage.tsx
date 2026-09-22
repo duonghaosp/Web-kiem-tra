@@ -29,7 +29,7 @@ import { gradeEntireExam } from '../lib/gradingEngine';
 import { triggerCelebration } from '../lib/gamification';
 import { fetchAssignmentById, saveStudentSubmission } from '../lib/assignmentCloudSync';
 import { fetchStudentsFromCloud } from '../lib/studentCloudSync';
-import { getStoredStudents, INITIAL_CLASSES } from '../data/studentsData';
+import { getStoredStudents, INITIAL_CLASSES, compareVietnameseNames } from '../data/studentsData';
 import { normalizeQuestion, normalizeQuestionList } from '../lib/questionUtils';
 
 export const ExamTakingPage: React.FC = () => {
@@ -119,16 +119,7 @@ export const ExamTakingPage: React.FC = () => {
   const classStudents = useMemo<Profile[]>(() => {
     return allSystemStudents
       .filter((s: Profile) => s.class_name === selectedClass)
-      .sort((a: Profile, b: Profile) => {
-        // Tách lấy Tên (chữ cuối cùng trong họ và tên) để so sánh theo bảng chữ cái
-        const partsA = a.full_name.trim().split(/\s+/);
-        const partsB = b.full_name.trim().split(/\s+/);
-        const firstNameA = partsA[partsA.length - 1] || '';
-        const firstNameB = partsB[partsB.length - 1] || '';
-        const cmpFirst = firstNameA.localeCompare(firstNameB, 'vi', { sensitivity: 'base' });
-        if (cmpFirst !== 0) return cmpFirst;
-        return a.full_name.localeCompare(b.full_name, 'vi', { sensitivity: 'base' });
-      });
+      .sort((a: Profile, b: Profile) => compareVietnameseNames(a.full_name, b.full_name));
   }, [allSystemStudents, selectedClass]);
 
   // Lọc theo từ khóa tìm kiếm nhanh của học sinh

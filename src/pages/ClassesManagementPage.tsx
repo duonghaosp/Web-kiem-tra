@@ -31,6 +31,7 @@ import {
   getStoredStudents,
   saveStoredStudents,
   reindexAllStudentCodes,
+  compareVietnameseNames,
 } from '../data/studentsData';
 import {
   saveStudentsToCloud,
@@ -496,21 +497,23 @@ export const ClassesManagementPage: React.FC = () => {
     XLSX.writeFile(wb, `Mau_Danh_Sach_Hoc_Sinh_${currentClass.name}.xlsx`);
   };
 
-  // LỌC HỌC SINH: CHỈ HIỂN THỊ HỌC SINH CỦA ĐÚNG LỚP ĐANG ĐƯỢC CHỌN
+  // LỌC HỌC SINH: CHỈ HIỂN THỊ HỌC SINH CỦA ĐÚNG LỚP ĐANG ĐƯỢC CHỌN (SẮP XẾP CHUẨN A - Z THEO TÊN)
   const filteredStudents = useMemo(() => {
-    return students.filter((s) => {
-      // 1. Phải thuộc đúng lớp đang chọn
-      const isSameClass = s.class_name === currentClass.name;
-      if (!isSameClass) return false;
+    return students
+      .filter((s) => {
+        // 1. Phải thuộc đúng lớp đang chọn
+        const isSameClass = s.class_name === currentClass.name;
+        if (!isSameClass) return false;
 
-      // 2. Lọc theo từ khóa tìm kiếm
-      if (!searchTerm.trim()) return true;
-      const term = searchTerm.toLowerCase();
-      return (
-        s.full_name.toLowerCase().includes(term) ||
-        (s.student_code && s.student_code.toLowerCase().includes(term))
-      );
-    });
+        // 2. Lọc theo từ khóa tìm kiếm
+        if (!searchTerm.trim()) return true;
+        const term = searchTerm.toLowerCase();
+        return (
+          s.full_name.toLowerCase().includes(term) ||
+          (s.student_code && s.student_code.toLowerCase().includes(term))
+        );
+      })
+      .sort((a, b) => compareVietnameseNames(a.full_name, b.full_name));
   }, [students, currentClass.name, searchTerm]);
 
   return (

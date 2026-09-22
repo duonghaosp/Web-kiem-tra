@@ -1,6 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabase';
 import { Profile, ClassItem } from '../types/database';
-import { INITIAL_STUDENTS, INITIAL_CLASSES, getStoredStudents } from '../data/studentsData';
+import { INITIAL_STUDENTS, INITIAL_CLASSES, getStoredStudents, reindexAllStudentCodes } from '../data/studentsData';
 
 const LOCAL_STUDENTS_KEY = 'geo_classes_students';
 const LOCAL_CLASSES_KEY = 'geo_classes_list';
@@ -63,14 +63,18 @@ export async function fetchStudentsFromCloud(): Promise<Profile[]> {
     if (!error && row?.value?.students && Array.isArray(row.value.students) && row.value.students.length > 0) {
       const cloudStudents: Profile[] = row.value.students;
 
+      // Luôn chuẩn hóa sắp xếp A-Z theo Tên và đánh lại mã liên tục
+      const normalizedCloud = reindexAllStudentCodes(cloudStudents, INITIAL_CLASSES);
+
       // Lưu vào LocalStorage của thiết bị (đặc biệt là điện thoại) để các lần sau nạp tức thì
-      localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(cloudStudents));
+      localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(normalizedCloud));
       window.dispatchEvent(new Event('geo_classes_students_updated'));
-      return cloudStudents;
+      return normalizedCloud;
     } else if (localStudents && localStudents.length > 0) {
       // Nếu Cloud chưa có mà thiết bị hiện tại đang có danh sách -> Đẩy lên Cloud
-      await saveStudentsToCloud(localStudents);
-      return localStudents;
+      const normalizedLocal = reindexAllStudentCodes(localStudents, INITIAL_CLASSES);
+      await saveStudentsToCloud(normalizedLocal);
+      return normalizedLocal;
     }
   } catch (err) {
     console.warn('Lỗi tải students từ Cloud:', err);
@@ -159,11 +163,18 @@ export async function autoSyncStudentsWithCloud(): Promise<void> {
 
     const cloudStudents: Profile[] = row?.value?.students || [];
 
-    if (localStudents.length > 0 && cloudStudents.length === 0) {
-      await saveStudentsToCloud(localStudents);
-    } else if (cloudStudents.length > 0 && localStudents.length === 0) {
-      localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(cloudStudents));
+    if (localStudents.length > 0) {
+      const normalized = reindexAllStudentCodes(localStudents, INITIAL_CLASSES);
+      localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(normalized));
+      await saveStudentsToCloud(normalized);
+    } else if (cloudStudents.length > 0) {
+      const normalized = reindexAllStudentCodes(cloudStudents, INITIAL_CLASSES);
+      localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(normalized));
       window.dispatchEvent(new Event('geo_classes_students_updated'));
+      await saveStudentsToCloud(normalized);
+    } else {
+      const initialNormalized = getStoredStudents();
+      await saveStudentsToCloud(initialNormalized);
     }
   } catch (err) {
     console.warn('Lỗi auto sync students:', err);

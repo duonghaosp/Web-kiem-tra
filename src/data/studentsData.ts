@@ -26,95 +26,95 @@ export const INITIAL_CLASSES: ClassItem[] = [
   { id: 'c_9a4', grade: 9, name: 'Lớp 9A4', academic_year: '2026-2027', student_count: 39, teacher_name: 'Cô Dương Thu Hảo' },
 ];
 
-// Danh sách họ tên học sinh thực tế của Khối 7
+// Danh sách họ tên học sinh thực tế của Khối 7 (Đã sắp xếp chuẩn A-Z theo Tên)
 const GRADE_7_NAMES: { [className: string]: string[] } = {
   'Lớp 7A1': [
-    'Tẩn Thị Lan Anh', 'Phàn Ngọc Anh', 'Phàn Thúy Anh', 'Lò Giá Bè', 'Chang Dì Bư',
-    'Lù Sán Ca', 'Chang Xa Da', 'Giàng Đô Dì', 'Lý Tả Mẩy', 'Tẩn A Lầu',
-    'Vàng A Chơ', 'Chẻo A Sính', 'Thào A Dơ', 'Sùng A Páo', 'Phu Mờ Chăn',
-    'Lò Văn Hoan', 'Tẩn Kim Dung', 'Chang Thúy Hằng', 'Phàn Yến Nhi', 'Lù Văn Hùng',
-    'Giàng Thị Mỵ', 'Lý A Vang', 'Vàng A Lềnh', 'Chẻo Thị Mai', 'Thào A Tủa',
-    'Sùng Thị Hoa', 'Phu A Ché', 'Lò Thị Nết', 'Tẩn A Dũng', 'Chang Văn Quý',
-    'Phàn Quốc Tuấn', 'Lù Thị Thảo', 'Giàng A Say', 'Lý Kim Ngân', 'Vàng Thị Dở',
-    'Chẻo Văn Đô', 'Thào A Sáng', 'Sùng A Vừ', 'Phu Thị Sen'
+    'Phàn Ngọc Anh', 'Phàn Thúy Anh', 'Tẩn Thị Lan Anh', 'Lò Giá Bè', 'Chang Dì Bư',
+    'Lù Sán Ca', 'Phu Mờ Chăn', 'Phu A Ché', 'Vàng A Chơ', 'Chang Xa Da',
+    'Giàng Đô Dì', 'Thào A Dơ', 'Vàng Thị Dở', 'Tẩn A Dũng', 'Tẩn Kim Dung',
+    'Chẻo Văn Đô', 'Chang Thúy Hằng', 'Sùng Thị Hoa', 'Lò Văn Hoan', 'Lù Văn Hùng',
+    'Tẩn A Lầu', 'Vàng A Lềnh', 'Chẻo Thị Mai', 'Lý Tả Mẩy', 'Giàng Thị Mỵ',
+    'Lò Thị Nết', 'Lý Kim Ngân', 'Phàn Yến Nhi', 'Sùng A Páo', 'Chang Văn Quý',
+    'Thào A Sáng', 'Giàng A Say', 'Phu Thị Sen', 'Chẻo A Sính', 'Lù Thị Thảo',
+    'Thào A Tủa', 'Phàn Quốc Tuấn', 'Lý A Vang', 'Sùng A Vừ'
   ],
   'Lớp 7A2': [
     'Tẩn Vân Anh', 'Tẩn Minh Bảo', 'Lường Thị Hải Băng', 'Ly Xá Be', 'Giàng Gà Bứ',
-    'Phu Mờ Chăn', 'Tẩn A Chiến', 'Lò Dá De', 'Vàng A Dì', 'Chẻo Thúy Diễm',
-    'Thào Thị Gâu', 'Sùng A Hải', 'Phàn Văn Khang', 'Lù Thị Ly', 'Chang A Minh',
-    'Lý Thị Nở', 'Tẩn A Nam', 'Lường Văn Phong', 'Ly Thị Quỳnh', 'Giàng A Sùng',
-    'Phu Thị Thu', 'Vàng Văn Thắng', 'Chẻo Kim Trâm', 'Thào A Uy', 'Sùng Văn Việt',
-    'Phàn Thị Xuân', 'Lù A Xì', 'Chang Thị Yến', 'Lý Văn Cường', 'Tẩn Thúy Kiều',
-    'Lường A Lử', 'Ly Văn Mạnh', 'Giàng Thị Nga', 'Phu A Nhì', 'Vàng Thị Oanh',
-    'Chẻo Văn Phúc', 'Thào Thị Sính', 'Sùng A Tỏa', 'Phàn Thị Mây'
+    'Phu Mờ Chăn', 'Tẩn A Chiến', 'Lý Văn Cường', 'Lò Dá De', 'Vàng A Dì',
+    'Chẻo Thúy Diễm', 'Thào Thị Gâu', 'Sùng A Hải', 'Phàn Văn Khang', 'Tẩn Thúy Kiều',
+    'Lường A Lử', 'Lù Thị Ly', 'Ly Văn Mạnh', 'Phàn Thị Mây', 'Chang A Minh',
+    'Tẩn A Nam', 'Giàng Thị Nga', 'Phu A Nhì', 'Lý Thị Nở', 'Vàng Thị Oanh',
+    'Lường Văn Phong', 'Chẻo Văn Phúc', 'Ly Thị Quỳnh', 'Thào Thị Sính', 'Giàng A Sùng',
+    'Vàng Văn Thắng', 'Phu Thị Thu', 'Sùng A Tỏa', 'Chẻo Kim Trâm', 'Thào A Uy',
+    'Sùng Văn Việt', 'Lù A Xì', 'Phàn Thị Xuân', 'Chang Thị Yến'
   ],
   'Lớp 7A3': [
-    'Chang Văn An', 'Lù Thị Bình', 'Phàn A Cường', 'Tẩn Thị Duyên', 'Lò A Én',
-    'Giàng Văn Giang', 'Ly Thị Hạnh', 'Phu A Khải', 'Vàng Thị Liên', 'Chẻo Văn Long',
-    'Thào Thị Mai', 'Sùng A Nam', 'Lường Văn Nghĩa', 'Tẩn Thị Phúc', 'Phàn A Quân',
-    'Chang Thị Sim', 'Lù Văn Tài', 'Giàng Thị Tuyết', 'Ly A Vàng', 'Phu Thị Xuân',
-    'Vàng A Yên', 'Chẻo Thị Anh', 'Thào Văn Bách', 'Sùng Thị Cúc', 'Lường A Dũng',
-    'Tẩn Văn Hải', 'Phàn Thị Hằng', 'Chang A Khoa', 'Lù Thị Lan', 'Giàng A Lực',
-    'Ly Văn Minh', 'Phu Thị Ngát', 'Vàng A Phong', 'Chẻo Thị Quyên', 'Thào Văn Sang',
-    'Sùng Thị Tâm', 'Lường Văn Uyên', 'Tẩn A Vũ', 'Phàn Thị Xuyến'
+    'Chang Văn An', 'Chẻo Thị Anh', 'Thào Văn Bách', 'Lù Thị Bình', 'Sùng Thị Cúc',
+    'Phàn A Cường', 'Lường A Dũng', 'Tẩn Thị Duyên', 'Lò A Én', 'Giàng Văn Giang',
+    'Tẩn Văn Hải', 'Ly Thị Hạnh', 'Phàn Thị Hằng', 'Phu A Khải', 'Chang A Khoa',
+    'Lù Thị Lan', 'Vàng Thị Liên', 'Chẻo Văn Long', 'Giàng A Lực', 'Thào Thị Mai',
+    'Ly Văn Minh', 'Sùng A Nam', 'Phu Thị Ngát', 'Lường Văn Nghĩa', 'Vàng A Phong',
+    'Tẩn Thị Phúc', 'Phàn A Quân', 'Chẻo Thị Quyên', 'Thào Văn Sang', 'Chang Thị Sim',
+    'Lù Văn Tài', 'Sùng Thị Tâm', 'Giàng Thị Tuyết', 'Lường Văn Uyên', 'Ly A Vàng',
+    'Tẩn A Vũ', 'Phu Thị Xuân', 'Phàn Thị Xuyến', 'Vàng A Yên'
   ],
   'Lớp 7A4': [
-    'Phu Văn Bách', 'Vàng Thị Cúc', 'Chẻo A Dân', 'Thào Thị Gái', 'Sùng A Hào',
-    'Lường Thị Kiều', 'Tẩn A Luận', 'Phàn Văn Mùa', 'Chang Thị Nương', 'Lù A Phúng',
-    'Giàng Thị Quý', 'Ly Văn Rùa', 'Phu A Sáng', 'Vàng Thị Thơm', 'Chẻo A Út',
-    'Thào Thị Vui', 'Sùng Văn Xa', 'Lường Thị Yến', 'Tẩn A Bắc', 'Phàn Thị Chi',
-    'Chang Văn Doanh', 'Lù Thị Gấm', 'Giàng A Hảo', 'Ly Thị Kính', 'Phu Văn Lợi',
-    'Vàng A Mua', 'Chẻo Thị Nụ', 'Thào A Páo', 'Sùng Thị Quế', 'Lường A Súng',
-    'Tẩn Thị Tươi', 'Phàn Văn Vang', 'Chang A Xín', 'Lù Thị Ý', 'Giàng A Bền',
-    'Ly Thị Chinh', 'Phu Văn Đạt', 'Vàng Thị Huệ', 'Chẻo A Kỷ'
+    'Phu Văn Bách', 'Tẩn A Bắc', 'Giàng A Bền', 'Phàn Thị Chi', 'Ly Thị Chinh',
+    'Vàng Thị Cúc', 'Chẻo A Dân', 'Chang Văn Doanh', 'Phu Văn Đạt', 'Thào Thị Gái',
+    'Lù Thị Gấm', 'Giàng A Hảo', 'Sùng A Hào', 'Vàng Thị Huệ', 'Lường Thị Kiều',
+    'Ly Thị Kính', 'Chẻo A Kỷ', 'Phu Văn Lợi', 'Tẩn A Luận', 'Phàn Văn Mùa',
+    'Vàng A Mua', 'Chẻo Thị Nụ', 'Chang Thị Nương', 'Thào A Páo', 'Lù A Phúng',
+    'Sùng Thị Quế', 'Giàng Thị Quý', 'Ly Văn Rùa', 'Phu A Sáng', 'Lường A Súng',
+    'Vàng Thị Thơm', 'Tẩn Thị Tươi', 'Chẻo A Út', 'Phàn Văn Vang', 'Thào Thị Vui',
+    'Sùng Văn Xa', 'Chang A Xín', 'Lù Thị Ý', 'Lường Thị Yến'
   ]
 };
 
-// Danh sách họ tên học sinh thực tế của Khối 9
+// Danh sách họ tên học sinh thực tế của Khối 9 (Đã sắp xếp chuẩn A-Z theo Tên)
 const GRADE_9_NAMES: { [className: string]: string[] } = {
   'Lớp 9A1': [
-    'Lý Văn Anh', 'Tẩn Ngọc Ánh', 'Tẩn Tả Mẩy Chiếu', 'Chang Mè De', 'Ly A De',
-    'Giàng Văn Dũng', 'Phàn Thị Hà', 'Vàng A Hùng', 'Chẻo Thúy Kiều', 'Thào A Lềnh',
-    'Sùng Thị Mai', 'Phu A Nam', 'Lò Văn Phong', 'Lường Thị Quý', 'Lù Văn Sang',
-    'Tẩn Thị Thúy', 'Chang A Vừ', 'Phàn Thị Xuân', 'Giàng A Yên', 'Ly Thị Bích',
-    'Vàng Văn Chiến', 'Chẻo A Dơ', 'Thào Thị Em', 'Sùng A Giang', 'Phu Thị Hân',
-    'Lò Văn Khang', 'Lường Thị Linh', 'Lù A Minh', 'Tẩn Thị Nga', 'Chang Văn Phát',
-    'Phàn A Quân', 'Giàng Thị Sen', 'Ly Văn Tâm', 'Vàng Thị Uyên', 'Chẻo Văn Vinh',
-    'Thào Thị Xoan', 'Sùng Văn Y', 'Phu A Zừ', 'Lò Thị Mơ'
+    'Lý Văn Anh', 'Tẩn Ngọc Ánh', 'Ly Thị Bích', 'Vàng Văn Chiến', 'Tẩn Tả Mẩy Chiếu',
+    'Chang Mè De', 'Ly A De', 'Chẻo A Dơ', 'Giàng Văn Dũng', 'Thào Thị Em',
+    'Sùng A Giang', 'Phàn Thị Hà', 'Phu Thị Hân', 'Vàng A Hùng', 'Lò Văn Khang',
+    'Chẻo Thúy Kiều', 'Thào A Lềnh', 'Lường Thị Linh', 'Sùng Thị Mai', 'Lù A Minh',
+    'Lò Thị Mơ', 'Phu A Nam', 'Tẩn Thị Nga', 'Chang Văn Phát', 'Lò Văn Phong',
+    'Phàn A Quân', 'Lường Thị Quý', 'Lù Văn Sang', 'Giàng Thị Sen', 'Ly Văn Tâm',
+    'Tẩn Thị Thúy', 'Vàng Thị Uyên', 'Chẻo Văn Vinh', 'Chang A Vừ', 'Thào Thị Xoan',
+    'Phàn Thị Xuân', 'Sùng Văn Y', 'Giàng A Yên', 'Phu A Zừ'
   ],
   'Lớp 9A2': [
-    'Tẩn A Bình', 'Phàn Văn Chung', 'Chang Thị Dung', 'Lù A Đạt', 'Giàng Thị Én',
-    'Ly Văn Giao', 'Vàng Thị Hoa', 'Chẻo A Ích', 'Thào Văn Khang', 'Sùng Thị Lan',
-    'Phu A Long', 'Lò Thị Mỵ', 'Lường Văn Nam', 'Tẩn Thị Oanh', 'Phàn A Phúc',
-    'Chang Thị Quỳnh', 'Lù Văn Rực', 'Giàng Thị Sương', 'Ly A Tài', 'Vàng Thị Uyên',
-    'Chẻo Văn Vang', 'Thào Thị Xinh', 'Sùng A Yêu', 'Phu Thị An', 'Lò Văn Bách',
-    'Lường Thị Cúc', 'Tẩn A Dũng', 'Phàn Thị Gấm', 'Chang A Hảo', 'Lù Thị Kính',
-    'Giàng Văn Lợi', 'Ly Thị Mai', 'Vàng A Nông', 'Chẻo Thị Phượng', 'Thào A Quý',
-    'Sùng Thị Rộng', 'Phu Văn Sơn', 'Lò Thị Trang', 'Lường A Vàng'
+    'Phu Thị An', 'Lò Văn Bách', 'Tẩn A Bình', 'Phàn Văn Chung', 'Lường Thị Cúc',
+    'Chang Thị Dung', 'Tẩn A Dũng', 'Lù A Đạt', 'Giàng Thị Én', 'Phàn Thị Gấm',
+    'Ly Văn Giao', 'Chang A Hảo', 'Vàng Thị Hoa', 'Chẻo A Ích', 'Thào Văn Khang',
+    'Lù Thị Kính', 'Sùng Thị Lan', 'Phu A Long', 'Giàng Văn Lợi', 'Ly Thị Mai',
+    'Lò Thị Mỵ', 'Lường Văn Nam', 'Vàng A Nông', 'Tẩn Thị Oanh', 'Phàn A Phúc',
+    'Chẻo Thị Phượng', 'Thào A Quý', 'Chang Thị Quỳnh', 'Sùng Thị Rộng', 'Lù Văn Rực',
+    'Phu Văn Sơn', 'Giàng Thị Sương', 'Ly A Tài', 'Lò Thị Trang', 'Vàng Thị Uyên',
+    'Chẻo Văn Vang', 'Lường A Vàng', 'Thào Thị Xinh', 'Sùng A Yêu'
   ],
   'Lớp 9A3': [
-    'Giàng A Báo', 'Ly Thị Cẩm', 'Vàng Văn Dần', 'Chẻo Thị Ém', 'Thào A Phềnh',
-    'Sùng Văn Gió', 'Phu Thị Hạnh', 'Lò A Ích', 'Lường Thị Khanh', 'Tẩn Văn Luyện',
-    'Phàn Thị Mận', 'Chang A Nếnh', 'Lù Thị Oanh', 'Giàng Văn Páo', 'Ly Thị Quế',
-    'Vàng A Rùa', 'Chẻo Thị Sen', 'Thào Văn Tủa', 'Sùng Thị Uyên', 'Phu A Vang',
-    'Lò Thị Xuyến', 'Lường A Yên', 'Tẩn Văn Bắc', 'Phàn Thị Cúc', 'Chang A Dân',
-    'Lù Thị Giang', 'Giàng A Hùng', 'Ly Thị Loan', 'Vàng Văn Minh', 'Chẻo Thị Nguyệt',
-    'Thào A Phong', 'Sùng Thị Quyên', 'Phu Văn Rực', 'Lò Thị San', 'Lường A Tỏa',
-    'Tẩn Thị Vân', 'Phàn Văn Xá', 'Chang Thị Ý', 'Lù A Zếnh'
+    'Giàng A Báo', 'Tẩn Văn Bắc', 'Ly Thị Cẩm', 'Phàn Thị Cúc', 'Chang A Dân',
+    'Vàng Văn Dần', 'Chẻo Thị Ém', 'Lù Thị Giang', 'Sùng Văn Gió', 'Phu Thị Hạnh',
+    'Giàng A Hùng', 'Lò A Ích', 'Lường Thị Khanh', 'Ly Thị Loan', 'Tẩn Văn Luyện',
+    'Phàn Thị Mận', 'Vàng Văn Minh', 'Chang A Nếnh', 'Chẻo Thị Nguyệt', 'Lù Thị Oanh',
+    'Giàng Văn Páo', 'Thào A Phềnh', 'Thào A Phong', 'Ly Thị Quế', 'Sùng Thị Quyên',
+    'Vàng A Rùa', 'Phu Văn Rực', 'Lò Thị San', 'Chẻo Thị Sen', 'Lường A Tỏa',
+    'Thào Văn Tủa', 'Sùng Thị Uyên', 'Phu A Vang', 'Tẩn Thị Vân', 'Phàn Văn Xá',
+    'Lò Thị Xuyến', 'Chang Thị Ý', 'Lường A Yên', 'Lù A Zếnh'
   ],
   'Lớp 9A4': [
-    'Sùng A Búa', 'Phu Thị Châm', 'Lò Văn Dẻ', 'Lường Thị Én', 'Tẩn A Phủ',
-    'Phàn Văn Giáp', 'Chang Thị Hồi', 'Lù A Inh', 'Giàng Thị Kiều', 'Ly Văn Lộc',
-    'Vàng Thị Mơ', 'Chẻo A Năng', 'Thào Thị Ổn', 'Sùng Văn Pao', 'Phu Thị Quý',
-    'Lò A Rạng', 'Lường Thị Sinh', 'Tẩn Văn Tuân', 'Phàn Thị Út', 'Chang A Vang',
-    'Lù Thị Xoa', 'Giàng Văn Yến', 'Ly A Bách', 'Vàng Thị Chinh', 'Chẻo A Du',
-    'Thào Thị Gấm', 'Sùng A Hảo', 'Phu Thị Kính', 'Lò Văn Lập', 'Lường Thị Mẩy',
-    'Tẩn A Nở', 'Phàn Thị Phúc', 'Chang Văn Quế', 'Lù Thị Rộng', 'Giàng A Say',
-    'Ly Thị Thu', 'Vàng A Vừ', 'Chẻo Thị Xa', 'Thào A Yêu'
+    'Ly A Bách', 'Sùng A Búa', 'Phu Thị Châm', 'Vàng Thị Chinh', 'Lò Văn Dẻ',
+    'Chẻo A Du', 'Lường Thị Én', 'Thào Thị Gấm', 'Phàn Văn Giáp', 'Sùng A Hảo',
+    'Chang Thị Hồi', 'Lù A Inh', 'Giàng Thị Kiều', 'Phu Thị Kính', 'Lò Văn Lập',
+    'Ly Văn Lộc', 'Lường Thị Mẩy', 'Vàng Thị Mơ', 'Chẻo A Năng', 'Tẩn A Nở',
+    'Thào Thị Ổn', 'Sùng Văn Pao', 'Tẩn A Phủ', 'Phàn Thị Phúc', 'Chang Văn Quế',
+    'Phu Thị Quý', 'Lò A Rạng', 'Lù Thị Rộng', 'Giàng A Say', 'Lường Thị Sinh',
+    'Ly Thị Thu', 'Tẩn Văn Tuân', 'Phàn Thị Út', 'Chang A Vang', 'Vàng A Vừ',
+    'Chẻo Thị Xa', 'Lù Thị Xoa', 'Giàng Văn Yến', 'Thào A Yêu'
   ]
 };
 
-const removeVietnameseTones = (str: string): string => {
+export const removeVietnameseTones = (str: string): string => {
   return str
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -125,13 +125,33 @@ const removeVietnameseTones = (str: string): string => {
 };
 
 /**
+ * HÀM SO SÁNH HỌ VÀ TÊN THEO CHUẨN TIẾNG VIỆT:
+ * 1. So sánh TÊN gọi (từ cuối cùng trong họ và tên) theo bảng chữ cái A-Z
+ * 2. Nếu cùng Tên -> So sánh Họ và Tên đệm
+ */
+export const compareVietnameseNames = (nameA: string, nameB: string): number => {
+  if (!nameA) return -1;
+  if (!nameB) return 1;
+
+  const partsA = nameA.trim().split(/\s+/);
+  const partsB = nameB.trim().split(/\s+/);
+
+  const firstNameA = partsA[partsA.length - 1] || '';
+  const firstNameB = partsB[partsB.length - 1] || '';
+
+  const cmpFirst = firstNameA.localeCompare(firstNameB, 'vi', { sensitivity: 'base' });
+  if (cmpFirst !== 0) return cmpFirst;
+
+  const restA = partsA.slice(0, partsA.length - 1).join(' ');
+  const restB = partsB.slice(0, partsB.length - 1).join(' ');
+  return restA.localeCompare(restB, 'vi', { sensitivity: 'base' });
+};
+
+/**
  * HÀM ĐÁNH LẠI MÃ HỌC SINH TỰ ĐỘNG THEO SỐ LƯỢNG THỰC TẾ CỦA TỪNG LỚP:
- * - Khối 6: Tiền tố HS06
- * - Khối 7: Tiền tố HS07
- * - Khối 8: Tiền tố HS08
- * - Khối 9: Tiền tố HS09
- * Đánh số liên tục qua các lớp A1 -> A2 -> A3 -> A4 dựa trên đúng số học sinh THỰC CÓ của mỗi lớp.
- * KHÔNG tự ý chèn học sinh giả vào các lớp trống.
+ * - Tự động sắp xếp học sinh trong từng lớp theo chuẩn Tiếng Việt (A - Z theo Tên).
+ * - Đánh số liên tục từ 1 đến N trong khối (Khối 6: HS06..., Khối 7: HS07..., Khối 8: HS08..., Khối 9: HS09...).
+ * - Đảm bảo thứ tự hiển thị trong Sổ Điểm, Dropdown làm bài và Bảng Báo Cáo trùng khớp 100%.
  */
 export const reindexAllStudentCodes = (
   studentsList: Profile[],
@@ -150,8 +170,10 @@ export const reindexAllStudentCodes = (
       .sort((a, b) => a.name.localeCompare(b.name, 'vi'));
 
     gradeClasses.forEach((cls) => {
-      // Lấy danh sách học sinh THỰC TẾ thuộc lớp này
-      const classStudents = studentsList.filter((s) => s.class_name === cls.name);
+      // Lấy danh sách học sinh THỰC TẾ thuộc lớp này VÀ sắp xếp chuẩn Tiếng Việt A-Z
+      const classStudents = studentsList
+        .filter((s) => s.class_name === cls.name)
+        .sort((a, b) => compareVietnameseNames(a.full_name, b.full_name));
 
       classStudents.forEach((st) => {
         const studentCode = `${prefix}${gradeCounter}`;
@@ -166,11 +188,13 @@ export const reindexAllStudentCodes = (
     });
 
     // Gom cả các học sinh cùng khối nhưng không khớp tên lớp chuẩn (nếu có)
-    const otherGradeStudents = studentsList.filter(
-      (s) =>
-        Number(s.grade) === Number(g) &&
-        !gradeClasses.some((c) => c.name === s.class_name)
-    );
+    const otherGradeStudents = studentsList
+      .filter(
+        (s) =>
+          Number(s.grade) === Number(g) &&
+          !gradeClasses.some((c) => c.name === s.class_name)
+      )
+      .sort((a, b) => compareVietnameseNames(a.full_name, b.full_name));
 
     otherGradeStudents.forEach((st) => {
       const studentCode = `${prefix}${gradeCounter}`;
