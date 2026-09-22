@@ -8,10 +8,10 @@ export const INITIAL_CLASSES: ClassItem[] = [
   { id: 'c_6a4', grade: 6, name: 'Lớp 6A4', academic_year: '2026-2027', student_count: 0, teacher_name: 'Cô Dương Thu Hảo' },
 
   // Khối 7
-  { id: 'c_7a1', grade: 7, name: 'Lớp 7A1', academic_year: '2026-2027', student_count: 39, teacher_name: 'Cô Dương Thu Hảo' },
-  { id: 'c_7a2', grade: 7, name: 'Lớp 7A2', academic_year: '2026-2027', student_count: 39, teacher_name: 'Cô Dương Thu Hảo' },
-  { id: 'c_7a3', grade: 7, name: 'Lớp 7A3', academic_year: '2026-2027', student_count: 39, teacher_name: 'Cô Dương Thu Hảo' },
-  { id: 'c_7a4', grade: 7, name: 'Lớp 7A4', academic_year: '2026-2027', student_count: 39, teacher_name: 'Cô Dương Thu Hảo' },
+  { id: 'c_7a1', grade: 7, name: 'Lớp 7A1', academic_year: '2026-2027', student_count: 3, teacher_name: 'Cô Dương Thu Hảo' },
+  { id: 'c_7a2', grade: 7, name: 'Lớp 7A2', academic_year: '2026-2027', student_count: 18, teacher_name: 'Cô Dương Thu Hảo' },
+  { id: 'c_7a3', grade: 7, name: 'Lớp 7A3', academic_year: '2026-2027', student_count: 0, teacher_name: 'Cô Dương Thu Hảo' },
+  { id: 'c_7a4', grade: 7, name: 'Lớp 7A4', academic_year: '2026-2027', student_count: 0, teacher_name: 'Cô Dương Thu Hảo' },
 
   // Khối 8
   { id: 'c_8a1', grade: 8, name: 'Lớp 8A1', academic_year: '2026-2027', student_count: 0, teacher_name: 'Cô Dương Thu Hảo' },
@@ -20,98 +20,75 @@ export const INITIAL_CLASSES: ClassItem[] = [
   { id: 'c_8a4', grade: 8, name: 'Lớp 8A4', academic_year: '2026-2027', student_count: 0, teacher_name: 'Cô Dương Thu Hảo' },
 
   // Khối 9
-  { id: 'c_9a1', grade: 9, name: 'Lớp 9A1', academic_year: '2026-2027', student_count: 39, teacher_name: 'Cô Dương Thu Hảo' },
-  { id: 'c_9a2', grade: 9, name: 'Lớp 9A2', academic_year: '2026-2027', student_count: 39, teacher_name: 'Cô Dương Thu Hảo' },
-  { id: 'c_9a3', grade: 9, name: 'Lớp 9A3', academic_year: '2026-2027', student_count: 39, teacher_name: 'Cô Dương Thu Hảo' },
-  { id: 'c_9a4', grade: 9, name: 'Lớp 9A4', academic_year: '2026-2027', student_count: 39, teacher_name: 'Cô Dương Thu Hảo' },
+  { id: 'c_9a1', grade: 9, name: 'Lớp 9A1', academic_year: '2026-2027', student_count: 9, teacher_name: 'Cô Dương Thu Hảo' },
+  { id: 'c_9a2', grade: 9, name: 'Lớp 9A2', academic_year: '2026-2027', student_count: 15, teacher_name: 'Cô Dương Thu Hảo' },
+  { id: 'c_9a3', grade: 9, name: 'Lớp 9A3', academic_year: '2026-2027', student_count: 0, teacher_name: 'Cô Dương Thu Hảo' },
+  { id: 'c_9a4', grade: 9, name: 'Lớp 9A4', academic_year: '2026-2027', student_count: 0, teacher_name: 'Cô Dương Thu Hảo' },
 ];
 
-// Danh sách họ tên học sinh thực tế của Khối 7 (Đã sắp xếp chuẩn A-Z theo Tên)
+// Danh sách họ tên học sinh thực tế của Khối 7 (Từ dữ liệu thực tế tại trường của Cô Hảo)
 const GRADE_7_NAMES: { [className: string]: string[] } = {
   'Lớp 7A1': [
-    'Phàn Ngọc Anh', 'Phàn Thúy Anh', 'Tẩn Thị Lan Anh', 'Lò Giá Bè', 'Chang Dì Bư',
-    'Lù Sán Ca', 'Phu Mờ Chăn', 'Phu A Ché', 'Vàng A Chơ', 'Chang Xa Da',
-    'Giàng Đô Dì', 'Thào A Dơ', 'Vàng Thị Dở', 'Tẩn A Dũng', 'Tẩn Kim Dung',
-    'Chẻo Văn Đô', 'Chang Thúy Hằng', 'Sùng Thị Hoa', 'Lò Văn Hoan', 'Lù Văn Hùng',
-    'Tẩn A Lầu', 'Vàng A Lềnh', 'Chẻo Thị Mai', 'Lý Tả Mẩy', 'Giàng Thị Mỵ',
-    'Lò Thị Nết', 'Lý Kim Ngân', 'Phàn Yến Nhi', 'Sùng A Páo', 'Chang Văn Quý',
-    'Thào A Sáng', 'Giàng A Say', 'Phu Thị Sen', 'Chẻo A Sính', 'Lù Thị Thảo',
-    'Thào A Tủa', 'Phàn Quốc Tuấn', 'Lý A Vang', 'Sùng A Vừ'
+    'Phàn Thúy Anh',
+    'Phu Mờ Chăn',
+    'Lù Hờ Số'
   ],
   'Lớp 7A2': [
-    'Tẩn Vân Anh', 'Tẩn Minh Bảo', 'Lường Thị Hải Băng', 'Ly Xá Be', 'Giàng Gà Bứ',
-    'Phu Mờ Chăn', 'Tẩn A Chiến', 'Lý Văn Cường', 'Lò Dá De', 'Vàng A Dì',
-    'Chẻo Thúy Diễm', 'Thào Thị Gâu', 'Sùng A Hải', 'Phàn Văn Khang', 'Tẩn Thúy Kiều',
-    'Lường A Lử', 'Lù Thị Ly', 'Ly Văn Mạnh', 'Phàn Thị Mây', 'Chang A Minh',
-    'Tẩn A Nam', 'Giàng Thị Nga', 'Phu A Nhì', 'Lý Thị Nở', 'Vàng Thị Oanh',
-    'Lường Văn Phong', 'Chẻo Văn Phúc', 'Ly Thị Quỳnh', 'Thào Thị Sính', 'Giàng A Sùng',
-    'Vàng Văn Thắng', 'Phu Thị Thu', 'Sùng A Tỏa', 'Chẻo Kim Trâm', 'Thào A Uy',
-    'Sùng Văn Việt', 'Lù A Xì', 'Phàn Thị Xuân', 'Chang Thị Yến'
+    'Tẩn Vân Anh',
+    'Lường Thị Hải Băng',
+    'Ly Xá Be',
+    'Phu Mờ Chăn',
+    'Lò Dá De',
+    'Ly Che Dừ',
+    'Nhù Tre Gà',
+    'Phàn Ngọc Hà',
+    'Phàn Thúy Ngọc Hà',
+    'Lý Thị Hạnh',
+    'Tẩn Mai Hiền',
+    'Tẩn Xoang Liều',
+    'Tẩn Tiến Minh',
+    'Chẻo Ngọc Nhi',
+    'Giàng Xá Nông',
+    'Giàng Đô Sô',
+    'Tẩn Tiến Toàn',
+    'Chang Dừ Xô'
   ],
-  'Lớp 7A3': [
-    'Chang Văn An', 'Chẻo Thị Anh', 'Thào Văn Bách', 'Lù Thị Bình', 'Sùng Thị Cúc',
-    'Phàn A Cường', 'Lường A Dũng', 'Tẩn Thị Duyên', 'Lò A Én', 'Giàng Văn Giang',
-    'Tẩn Văn Hải', 'Ly Thị Hạnh', 'Phàn Thị Hằng', 'Phu A Khải', 'Chang A Khoa',
-    'Lù Thị Lan', 'Vàng Thị Liên', 'Chẻo Văn Long', 'Giàng A Lực', 'Thào Thị Mai',
-    'Ly Văn Minh', 'Sùng A Nam', 'Phu Thị Ngát', 'Lường Văn Nghĩa', 'Vàng A Phong',
-    'Tẩn Thị Phúc', 'Phàn A Quân', 'Chẻo Thị Quyên', 'Thào Văn Sang', 'Chang Thị Sim',
-    'Lù Văn Tài', 'Sùng Thị Tâm', 'Giàng Thị Tuyết', 'Lường Văn Uyên', 'Ly A Vàng',
-    'Tẩn A Vũ', 'Phu Thị Xuân', 'Phàn Thị Xuyến', 'Vàng A Yên'
-  ],
-  'Lớp 7A4': [
-    'Phu Văn Bách', 'Tẩn A Bắc', 'Giàng A Bền', 'Phàn Thị Chi', 'Ly Thị Chinh',
-    'Vàng Thị Cúc', 'Chẻo A Dân', 'Chang Văn Doanh', 'Phu Văn Đạt', 'Thào Thị Gái',
-    'Lù Thị Gấm', 'Giàng A Hảo', 'Sùng A Hào', 'Vàng Thị Huệ', 'Lường Thị Kiều',
-    'Ly Thị Kính', 'Chẻo A Kỷ', 'Phu Văn Lợi', 'Tẩn A Luận', 'Phàn Văn Mùa',
-    'Vàng A Mua', 'Chẻo Thị Nụ', 'Chang Thị Nương', 'Thào A Páo', 'Lù A Phúng',
-    'Sùng Thị Quế', 'Giàng Thị Quý', 'Ly Văn Rùa', 'Phu A Sáng', 'Lường A Súng',
-    'Vàng Thị Thơm', 'Tẩn Thị Tươi', 'Chẻo A Út', 'Phàn Văn Vang', 'Thào Thị Vui',
-    'Sùng Văn Xa', 'Chang A Xín', 'Lù Thị Ý', 'Lường Thị Yến'
-  ]
+  'Lớp 7A3': [],
+  'Lớp 7A4': []
 };
 
-// Danh sách họ tên học sinh thực tế của Khối 9 (Đã sắp xếp chuẩn A-Z theo Tên)
+// Danh sách họ tên học sinh thực tế của Khối 9 (Từ dữ liệu thực tế tại trường của Cô Hảo)
 const GRADE_9_NAMES: { [className: string]: string[] } = {
   'Lớp 9A1': [
-    'Lý Văn Anh', 'Tẩn Ngọc Ánh', 'Ly Thị Bích', 'Vàng Văn Chiến', 'Tẩn Tả Mẩy Chiếu',
-    'Chang Mè De', 'Ly A De', 'Chẻo A Dơ', 'Giàng Văn Dũng', 'Thào Thị Em',
-    'Sùng A Giang', 'Phàn Thị Hà', 'Phu Thị Hân', 'Vàng A Hùng', 'Lò Văn Khang',
-    'Chẻo Thúy Kiều', 'Thào A Lềnh', 'Lường Thị Linh', 'Sùng Thị Mai', 'Lù A Minh',
-    'Lò Thị Mơ', 'Phu A Nam', 'Tẩn Thị Nga', 'Chang Văn Phát', 'Lò Văn Phong',
-    'Phàn A Quân', 'Lường Thị Quý', 'Lù Văn Sang', 'Giàng Thị Sen', 'Ly Văn Tâm',
-    'Tẩn Thị Thúy', 'Vàng Thị Uyên', 'Chẻo Văn Vinh', 'Chang A Vừ', 'Thào Thị Xoan',
-    'Phàn Thị Xuân', 'Sùng Văn Y', 'Giàng A Yên', 'Phu A Zừ'
+    'Tẩn Tả Mẩy Chiều',
+    'Lù Dừ Gơ',
+    'Phàn Thị Hà',
+    'Tẩn Long Hồi',
+    'Giàng Dế Hờ',
+    'Hoàng Gia Thành Long',
+    'Phùng Thị Ngân',
+    'Giàng Mè Sô',
+    'Cồ Thu Thảo'
   ],
   'Lớp 9A2': [
-    'Phu Thị An', 'Lò Văn Bách', 'Tẩn A Bình', 'Phàn Văn Chung', 'Lường Thị Cúc',
-    'Chang Thị Dung', 'Tẩn A Dũng', 'Lù A Đạt', 'Giàng Thị Én', 'Phàn Thị Gấm',
-    'Ly Văn Giao', 'Chang A Hảo', 'Vàng Thị Hoa', 'Chẻo A Ích', 'Thào Văn Khang',
-    'Lù Thị Kính', 'Sùng Thị Lan', 'Phu A Long', 'Giàng Văn Lợi', 'Ly Thị Mai',
-    'Lò Thị Mỵ', 'Lường Văn Nam', 'Vàng A Nông', 'Tẩn Thị Oanh', 'Phàn A Phúc',
-    'Chẻo Thị Phượng', 'Thào A Quý', 'Chang Thị Quỳnh', 'Sùng Thị Rộng', 'Lù Văn Rực',
-    'Phu Văn Sơn', 'Giàng Thị Sương', 'Ly A Tài', 'Lò Thị Trang', 'Vàng Thị Uyên',
-    'Chẻo Văn Vang', 'Lường A Vàng', 'Thào Thị Xinh', 'Sùng A Yêu'
+    'Phàn Lở Mẩy (16/6)',
+    'Phàn Lở Mẩy (9/8)',
+    'Chang Thồ Bư',
+    'Chẻo Mai Hà',
+    'Tẩn Văn Khánh',
+    'Phàn Mai Lâm',
+    'Tẩn Diệu Linh',
+    'Chẻo Lở Mẩy',
+    'Lý Tả Mẩy',
+    'Tẩn Lở Mẩy',
+    'Tẩn San Mẩy',
+    'Tẩn Tả Mẩy',
+    'Phàn Thủy Ngọc Minh',
+    'Tẩn Hạo Nam',
+    'Tẩn Chỉn Thanh'
   ],
-  'Lớp 9A3': [
-    'Giàng A Báo', 'Tẩn Văn Bắc', 'Ly Thị Cẩm', 'Phàn Thị Cúc', 'Chang A Dân',
-    'Vàng Văn Dần', 'Chẻo Thị Ém', 'Lù Thị Giang', 'Sùng Văn Gió', 'Phu Thị Hạnh',
-    'Giàng A Hùng', 'Lò A Ích', 'Lường Thị Khanh', 'Ly Thị Loan', 'Tẩn Văn Luyện',
-    'Phàn Thị Mận', 'Vàng Văn Minh', 'Chang A Nếnh', 'Chẻo Thị Nguyệt', 'Lù Thị Oanh',
-    'Giàng Văn Páo', 'Thào A Phềnh', 'Thào A Phong', 'Ly Thị Quế', 'Sùng Thị Quyên',
-    'Vàng A Rùa', 'Phu Văn Rực', 'Lò Thị San', 'Chẻo Thị Sen', 'Lường A Tỏa',
-    'Thào Văn Tủa', 'Sùng Thị Uyên', 'Phu A Vang', 'Tẩn Thị Vân', 'Phàn Văn Xá',
-    'Lò Thị Xuyến', 'Chang Thị Ý', 'Lường A Yên', 'Lù A Zếnh'
-  ],
-  'Lớp 9A4': [
-    'Ly A Bách', 'Sùng A Búa', 'Phu Thị Châm', 'Vàng Thị Chinh', 'Lò Văn Dẻ',
-    'Chẻo A Du', 'Lường Thị Én', 'Thào Thị Gấm', 'Phàn Văn Giáp', 'Sùng A Hảo',
-    'Chang Thị Hồi', 'Lù A Inh', 'Giàng Thị Kiều', 'Phu Thị Kính', 'Lò Văn Lập',
-    'Ly Văn Lộc', 'Lường Thị Mẩy', 'Vàng Thị Mơ', 'Chẻo A Năng', 'Tẩn A Nở',
-    'Thào Thị Ổn', 'Sùng Văn Pao', 'Tẩn A Phủ', 'Phàn Thị Phúc', 'Chang Văn Quế',
-    'Phu Thị Quý', 'Lò A Rạng', 'Lù Thị Rộng', 'Giàng A Say', 'Lường Thị Sinh',
-    'Ly Thị Thu', 'Tẩn Văn Tuân', 'Phàn Thị Út', 'Chang A Vang', 'Vàng A Vừ',
-    'Chẻo Thị Xa', 'Lù Thị Xoa', 'Giàng Văn Yến', 'Thào A Yêu'
-  ]
+  'Lớp 9A3': [],
+  'Lớp 9A4': []
 };
 
 export const removeVietnameseTones = (str: string): string => {
