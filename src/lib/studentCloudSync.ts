@@ -3,17 +3,22 @@ import { Profile, ClassItem } from '../types/database';
 import { INITIAL_STUDENTS, INITIAL_CLASSES, getStoredStudents, reindexAllStudentCodes } from '../data/studentsData';
 
 const LOCAL_STUDENTS_KEY = 'geo_classes_students';
+const LOCAL_STUDENTS_TIME_KEY = 'geo_classes_students_updated_at';
 const LOCAL_CLASSES_KEY = 'geo_classes_list';
+const LOCAL_CLASSES_TIME_KEY = 'geo_classes_list_updated_at';
 const CLOUD_STUDENTS_KEY = 'geo_classes_students_cloud';
 const CLOUD_CLASSES_KEY = 'geo_classes_list_cloud';
 
-// 1. Lưu danh sách học sinh (Đồng bộ đồng thời LocalStorage & Supabase Cloud)
+// 1. Lưu danh sách học sinh (Đồng bộ đồng thời LocalStorage & Supabase Cloud kèm Timestamp)
 export async function saveStudentsToCloud(students: Profile[]): Promise<boolean> {
   if (!Array.isArray(students)) return false;
+
+  const nowIso = new Date().toISOString();
 
   // Lưu cục bộ để hiển thị ngay tức thì trên thiết bị hiện tại
   try {
     localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(students));
+    localStorage.setItem(LOCAL_STUDENTS_TIME_KEY, nowIso);
     window.dispatchEvent(new Event('geo_classes_students_updated'));
   } catch (e) {
     console.warn('Lỗi lưu LocalStorage students:', e);
@@ -26,7 +31,7 @@ export async function saveStudentsToCloud(students: Profile[]): Promise<boolean>
           key: CLOUD_STUDENTS_KEY,
           value: {
             students,
-            updated_at: new Date().toISOString(),
+            updated_at: nowIso,
           },
         },
         { onConflict: 'key' }
@@ -45,12 +50,15 @@ export async function saveStudentsToCloud(students: Profile[]): Promise<boolean>
   return true;
 }
 
-// 2. Tải danh sách học sinh từ Supabase Cloud về máy/điện thoại
+// 2. Tải danh sách học sinh từ Supabase Cloud về máy/điện thoại (So sánh timestamp thông minh)
 export async function fetchStudentsFromCloud(): Promise<Profile[]> {
-  let localStudents = getStoredStudents();
+  const localSaved = localStorage.getItem(LOCAL_STUDENTS_KEY);
+  const localStudents: Profile[] = localSaved ? JSON.parse(localSaved) : [];
+  const localTimeStr = localStorage.getItem(LOCAL_STUDENTS_TIME_KEY);
+  const localTime = localTimeStr ? new Date(localTimeStr).getTime() : 0;
 
   if (!isSupabaseConfigured) {
-    return localStudents;
+    return localStudents.length > 0 ? localStudents : getStoredStudents();
   }
 
   try {
@@ -60,18 +68,30 @@ export async function fetchStudentsFromCloud(): Promise<Profile[]> {
       .eq('key', CLOUD_STUDENTS_KEY)
       .maybeSingle();
 
-    if (!error && row?.value?.students && Array.isArray(row.value.students) && row.value.students.length > 0) {
+    if (!error && row?.value?.students && Array.isArray(row.value.students)) {
       const cloudStudents: Profile[] = row.value.students;
+      const cloudTimeStr = row.value.updated_at;
+      const cloudTime = cloudTimeStr ? new Date(cloudTimeStr).getTime() : 0;
 
-      // Luôn chuẩn hóa sắp xếp A-Z theo Tên và đánh lại mã liên tục
-      const normalizedCloud = reindexAllStudentCodes(cloudStudents, INITIAL_CLASSES);
+      // Trường hợp 1: Thiết bị hiện tại có dữ liệu và MỚI HƠN Cloud -> Giữ thiết bị và cập nhật lên Cloud
+      if (localStudents.length > 0 && localTime > cloudTime) {
+        const normalizedLocal = reindexAllStudentCodes(localStudents, INITIAL_CLASSES);
+        await saveStudentsToCloud(normalizedLocal);
+        return normalizedLocal;
+      }
 
-      // Lưu vào LocalStorage của thiết bị (đặc biệt là điện thoại) để các lần sau nạp tức thì
-      localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(normalizedCloud));
-      window.dispatchEvent(new Event('geo_classes_students_updated'));
-      return normalizedCloud;
-    } else if (localStudents && localStudents.length > 0) {
-      // Nếu Cloud chưa có mà thiết bị hiện tại đang có danh sách -> Đẩy lên Cloud
+      // Trường hợp 2: Cloud có dữ liệu và MỚI HƠN hoặc bằng local (hoặc local rỗng) -> Cập nhật xuống máy
+      if (cloudStudents.length > 0) {
+        const normalizedCloud = reindexAllStudentCodes(cloudStudents, INITIAL_CLASSES);
+        localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(normalizedCloud));
+        if (cloudTimeStr) {
+          localStorage.setItem(LOCAL_STUDENTS_TIME_KEY, cloudTimeStr);
+        }
+        window.dispatchEvent(new Event('geo_classes_students_updated'));
+        return normalizedCloud;
+      }
+    } else if (localStudents.length > 0) {
+      // Cloud chưa có dữ liệu mà máy hiện tại đang có -> Đẩy lên Cloud
       const normalizedLocal = reindexAllStudentCodes(localStudents, INITIAL_CLASSES);
       await saveStudentsToCloud(normalizedLocal);
       return normalizedLocal;
@@ -80,15 +100,18 @@ export async function fetchStudentsFromCloud(): Promise<Profile[]> {
     console.warn('Lỗi tải students từ Cloud:', err);
   }
 
-  return localStudents;
+  return localStudents.length > 0 ? localStudents : getStoredStudents();
 }
 
 // 3. Lưu danh sách Lớp học lên Supabase Cloud
 export async function saveClassesToCloud(classes: ClassItem[]): Promise<boolean> {
   if (!Array.isArray(classes)) return false;
 
+  const nowIso = new Date().toISOString();
+
   try {
     localStorage.setItem(LOCAL_CLASSES_KEY, JSON.stringify(classes));
+    localStorage.setItem(LOCAL_CLASSES_TIME_KEY, nowIso);
     window.dispatchEvent(new Event('geo_classes_list_updated'));
   } catch (e) {
     console.warn('Lỗi lưu LocalStorage classes:', e);
@@ -101,7 +124,7 @@ export async function saveClassesToCloud(classes: ClassItem[]): Promise<boolean>
           key: CLOUD_CLASSES_KEY,
           value: {
             classes,
-            updated_at: new Date().toISOString(),
+            updated_at: nowIso,
           },
         },
         { onConflict: 'key' }
@@ -119,12 +142,14 @@ export async function saveClassesToCloud(classes: ClassItem[]): Promise<boolean>
 
 // 4. Tải danh sách Lớp học từ Supabase Cloud
 export async function fetchClassesFromCloud(): Promise<ClassItem[]> {
+  const localSaved = localStorage.getItem(LOCAL_CLASSES_KEY);
+  const localClasses: ClassItem[] = localSaved ? JSON.parse(localSaved) : INITIAL_CLASSES;
+  const localTimeStr = localStorage.getItem(LOCAL_CLASSES_TIME_KEY);
+  const localTime = localTimeStr ? new Date(localTimeStr).getTime() : 0;
+
+  if (!isSupabaseConfigured) return localClasses;
+
   try {
-    const saved = localStorage.getItem(LOCAL_CLASSES_KEY);
-    const localClasses: ClassItem[] = saved ? JSON.parse(saved) : INITIAL_CLASSES;
-
-    if (!isSupabaseConfigured) return localClasses;
-
     const { data: row, error } = await supabase
       .from('system_settings')
       .select('value')
@@ -133,18 +158,28 @@ export async function fetchClassesFromCloud(): Promise<ClassItem[]> {
 
     if (!error && row?.value?.classes && Array.isArray(row.value.classes) && row.value.classes.length > 0) {
       const cloudClasses: ClassItem[] = row.value.classes;
+      const cloudTimeStr = row.value.updated_at;
+      const cloudTime = cloudTimeStr ? new Date(cloudTimeStr).getTime() : 0;
+
+      if (localClasses.length > 0 && localTime > cloudTime) {
+        await saveClassesToCloud(localClasses);
+        return localClasses;
+      }
+
       localStorage.setItem(LOCAL_CLASSES_KEY, JSON.stringify(cloudClasses));
+      if (cloudTimeStr) {
+        localStorage.setItem(LOCAL_CLASSES_TIME_KEY, cloudTimeStr);
+      }
       window.dispatchEvent(new Event('geo_classes_list_updated'));
       return cloudClasses;
     } else if (localClasses && localClasses.length > 0) {
       await saveClassesToCloud(localClasses);
       return localClasses;
     }
-    return localClasses;
   } catch (err) {
     console.warn('Lỗi tải classes từ Cloud:', err);
-    return INITIAL_CLASSES;
   }
+  return localClasses;
 }
 
 // 5. Tự động đồng bộ hai chiều (Khởi chạy khi mở ứng dụng)
@@ -152,30 +187,8 @@ export async function autoSyncStudentsWithCloud(): Promise<void> {
   if (!isSupabaseConfigured) return;
 
   try {
-    const localRaw = localStorage.getItem(LOCAL_STUDENTS_KEY);
-    const localStudents: Profile[] = localRaw ? JSON.parse(localRaw) : [];
-
-    const { data: row } = await supabase
-      .from('system_settings')
-      .select('value')
-      .eq('key', CLOUD_STUDENTS_KEY)
-      .maybeSingle();
-
-    const cloudStudents: Profile[] = row?.value?.students || [];
-
-    if (localStudents.length > 0) {
-      const normalized = reindexAllStudentCodes(localStudents, INITIAL_CLASSES);
-      localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(normalized));
-      await saveStudentsToCloud(normalized);
-    } else if (cloudStudents.length > 0) {
-      const normalized = reindexAllStudentCodes(cloudStudents, INITIAL_CLASSES);
-      localStorage.setItem(LOCAL_STUDENTS_KEY, JSON.stringify(normalized));
-      window.dispatchEvent(new Event('geo_classes_students_updated'));
-      await saveStudentsToCloud(normalized);
-    } else {
-      const initialNormalized = getStoredStudents();
-      await saveStudentsToCloud(initialNormalized);
-    }
+    await fetchClassesFromCloud();
+    await fetchStudentsFromCloud();
   } catch (err) {
     console.warn('Lỗi auto sync students:', err);
   }

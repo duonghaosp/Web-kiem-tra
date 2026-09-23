@@ -576,7 +576,7 @@ export const ClassesManagementPage: React.FC = () => {
       .replace(/[^a-z0-9]/g, '');
   };
 
-  // Import học sinh từ file Excel SIÊU THÔNG MINH (Hỗ trợ 100% định dạng: vnEdu, SMAS, file không tiêu đề, file nhiều dòng tiêu đề...)
+  // Import học sinh từ file Excel SIÊU THÔNG MINH (Hỗ trợ 100% định dạng: vnEdu, SMAS, file có cột Lớp, file tiêu đề Lớp, file không tiêu đề...)
   const handleImportStudentsExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -601,8 +601,33 @@ export const ClassesManagementPage: React.FC = () => {
       let codeCol = -1;
       let usernameCol = -1;
       let dobCol = -1;
+      let classCol = -1;
 
-      // 1. Quét tìm các cột thông qua từ khóa tiêu đề (tìm trong 20 dòng đầu)
+      // 1. Quét tìm tiêu đề Lớp trong 20 dòng đầu (ví dụ: "LỚP: 7A1", "DANH SÁCH HỌC SINH LỚP 7A2", "7A3"...)
+      let headerDetectedClass = '';
+      let headerDetectedGrade = gradeFilter;
+
+      for (let r = 0; r < Math.min(rawRows.length, 20); r++) {
+        const row = rawRows[r];
+        if (!Array.isArray(row)) continue;
+
+        for (let c = 0; c < row.length; c++) {
+          const val = String(row[c] || '').trim();
+          if (!val) continue;
+
+          // Kiểm tra xem dòng tiêu đề có chứa tên lớp cụ thể hay không (ví dụ "Lớp 7A1", "7A2", "Lớp 9A1"...)
+          const classMatch = val.match(/(?:lớp|khối|chi\s*đội)?\s*([6-9])\s*([a-dA-D])\s*([1-4])?/i);
+          if (classMatch && !headerDetectedClass) {
+            const g = parseInt(classMatch[1]);
+            const letter = classMatch[2].toUpperCase();
+            const num = classMatch[3] || '1';
+            headerDetectedGrade = g;
+            headerDetectedClass = `Lớp ${g}${letter}${num}`;
+          }
+        }
+      }
+
+      // 2. Quét tìm các cột thông qua từ khóa tiêu đề (tìm trong 20 dòng đầu)
       for (let r = 0; r < Math.min(rawRows.length, 20); r++) {
         const row = rawRows[r];
         if (!Array.isArray(row)) continue;
@@ -644,6 +669,15 @@ export const ClassesManagementPage: React.FC = () => {
           ) {
             if (dobCol === -1) dobCol = cIdx;
           } else if (
+            text === 'lớp' ||
+            text === 'tên lớp' ||
+            text === 'class' ||
+            text === 'lớp học' ||
+            text === 'khối lớp' ||
+            text === 'mã lớp'
+          ) {
+            if (classCol === -1) classCol = cIdx;
+          } else if (
             text.includes('mã học sinh') ||
             text.includes('mã hs') ||
             text.includes('mã định danh') ||
@@ -667,7 +701,7 @@ export const ClassesManagementPage: React.FC = () => {
         }
       }
 
-      // 2. Nếu không tìm thấy cột bằng tiêu đề, tự động quét tìm cột chứa Họ Tên tiếng Việt
+      // 3. Nếu không tìm thấy cột bằng tiêu đề, tự động quét tìm cột chứa Họ Tên tiếng Việt
       if (fullNameCol === -1 && (hoDemCol === -1 || tenCol === -1)) {
         let bestNameCol = -1;
         let maxNameScore = 0;
@@ -676,7 +710,6 @@ export const ClassesManagementPage: React.FC = () => {
           let score = 0;
           for (let r = 0; r < Math.min(rawRows.length, 30); r++) {
             const val = String(rawRows[r]?.[c] || '').trim();
-            // Chuỗi họ tên: có độ dài >= 3, không chỉ là số
             if (val.length >= 3 && !/^\d+$/.test(val) && (val.includes(' ') || /[a-zA-Zà-ỹÀ-Ỹ]/.test(val))) {
               score++;
             }
@@ -692,8 +725,10 @@ export const ClassesManagementPage: React.FC = () => {
       }
 
       const newImportedStudents: Profile[] = [];
+      const touchedClasses = new Set<string>();
+      const importedNameKeys = new Set<string>();
 
-      // 3. Đọc từ dòng 0 đến hết, kiểm tra từng dòng xem có phải học sinh hay không
+      // 4. Đọc từ dòng 0 đến hết, kiểm tra từng dòng xem có phải học sinh hay không
       for (let r = 0; r < rawRows.length; r++) {
         const row = rawRows[r];
         if (!Array.isArray(row) || row.length === 0) continue;
@@ -743,6 +778,30 @@ export const ClassesManagementPage: React.FC = () => {
           continue;
         }
 
+        // Xác định Lớp và Khối của từng dòng học sinh
+        let rowClassName = currentClass.name;
+        let rowGrade = gradeFilter;
+
+        if (classCol !== -1 && row[classCol]) {
+          const rawCls = String(row[classCol]).trim();
+          const matchCls = rawCls.match(/([6-9])\s*([a-dA-D])\s*([1-4])?/i);
+          if (matchCls) {
+            rowGrade = parseInt(matchCls[1]);
+            const l = matchCls[2].toUpperCase();
+            const n = matchCls[3] || '1';
+            rowClassName = `Lớp ${rowGrade}${l}${n}`;
+          } else if (rawCls.startsWith('Lớp ')) {
+            rowClassName = rawCls;
+            const g = parseInt(rawCls.replace('Lớp ', '').charAt(0));
+            if (!isNaN(g)) rowGrade = g;
+          }
+        } else if (headerDetectedClass) {
+          rowClassName = headerDetectedClass;
+          rowGrade = headerDetectedGrade;
+        }
+
+        touchedClasses.add(rowClassName);
+
         // Đọc ngày sinh nếu có trong cột Ngày sinh hoặc trích xuất từ tên trong ngoặc (ví dụ "Phàn Lở Mẩy (16/6)")
         let birthDate = dobCol !== -1 && row[dobCol] ? formatBirthDate(row[dobCol]) : '';
         if (!birthDate) {
@@ -754,17 +813,21 @@ export const ClassesManagementPage: React.FC = () => {
 
         const customCode = codeCol !== -1 && row[codeCol] ? String(row[codeCol]).trim() : '';
         const customUsername = usernameCol !== -1 && row[usernameCol] ? String(row[usernameCol]).trim() : '';
-        const cleanUname = customUsername || `${removeVietnameseTones(fullName)}${gradeFilter}${newImportedStudents.length + 1}`;
+        const cleanUname = customUsername || `${removeVietnameseTones(fullName)}${rowGrade}${newImportedStudents.length + 1}`;
+
+        // Lưu khóa họ tên chuẩn hóa để lọc bỏ trường hợp học sinh bị lẫn ở lớp khác
+        const nameKey = `${removeVietnameseTones(fullName)}_${rowGrade}`;
+        importedNameKeys.add(nameKey);
 
         newImportedStudents.push({
           id: 's_imp_' + Date.now() + '_' + r + '_' + newImportedStudents.length,
-          student_code: customCode || `HS0${gradeFilter}${newImportedStudents.length + 1}`,
+          student_code: customCode || `HS0${rowGrade}${newImportedStudents.length + 1}`,
           full_name: fullName,
           birth_date: birthDate || null,
           username: cleanUname,
           role: 'student',
-          grade: gradeFilter,
-          class_name: currentClass.name,
+          grade: rowGrade,
+          class_name: rowClassName,
           xp: 100,
           level: 2,
           avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${cleanUname}`,
@@ -778,13 +841,39 @@ export const ClassesManagementPage: React.FC = () => {
         return;
       }
 
-      // Lọc bỏ học sinh cũ của riêng lớp này trước khi nạp mới
-      const otherStudents = students.filter((s) => s.class_name !== currentClass.name);
-      const combined = [...otherStudents, ...newImportedStudents];
+      // 5. LÀM SẠCH VÀ KẾT HỢP DỮ LIỆU:
+      // - Xóa toàn bộ học sinh cũ của các lớp được import lần này
+      // - XÓA BỎ BẤT KỲ HỌC SINH NÀO Ở LỚP KHÁC NẾU TRÙNG HỌ TÊN VỚI HỌC SINH VỪA IMPORT (Tránh 1 HS xuất hiện ở 2 lớp)
+      const remainingStudents = students.filter((s) => {
+        // Nếu thuộc lớp vừa import -> Xóa để nạp mới toàn bộ
+        if (s.class_name && touchedClasses.has(s.class_name)) return false;
+        // Nếu trùng họ tên với học sinh vừa import trong cùng khối -> Xóa khỏi lớp cũ để tránh lẫn lộn
+        const key = `${removeVietnameseTones(s.full_name)}_${s.grade}`;
+        if (importedNameKeys.has(key)) return false;
+        return true;
+      });
+
+      const combined = [...remainingStudents, ...newImportedStudents];
       const reindexed = reindexAllStudentCodes(combined, classes);
       saveStudents(reindexed);
 
-      alert(`🎉 Đã import thành công ĐẦY ĐỦ ${newImportedStudents.length} học sinh vào ${currentClass.name} và tự động đánh mã liên tục!`);
+      // Nếu import 1 lớp cụ thể, tự động chuyển Tab sang lớp đó để cô Hảo nhìn thấy ngay danh sách
+      if (touchedClasses.size === 1) {
+        const importedClassName = Array.from(touchedClasses)[0];
+        const targetClassItem = classes.find((c) => c.name === importedClassName);
+        if (targetClassItem) {
+          setGradeFilter(Number(targetClassItem.grade));
+          setSelectedClassId(targetClassItem.id);
+        }
+        alert(
+          `🎉 Đã import thành công ĐẦY ĐỦ ${newImportedStudents.length} học sinh vào "${importedClassName}"!\n\nHệ thống đã tự động đánh lại mã số liên tục và đồng bộ lên Đám mây.`
+        );
+      } else {
+        const classNamesStr = Array.from(touchedClasses).join(', ');
+        alert(
+          `🎉 Đã import thành công ĐẦY ĐỦ ${newImportedStudents.length} học sinh vào các lớp: ${classNamesStr}!\n\nHệ thống đã tự động phân loại đúng từng lớp, đánh lại mã liên tục và đồng bộ lên Đám mây.`
+        );
+      }
     } catch (err) {
       console.error('Lỗi khi đọc file Excel:', err);
       alert('Đã xảy ra lỗi khi đọc file Excel. Cô vui lòng thử lại hoặc tải file mẫu để kiểm tra nhé!');

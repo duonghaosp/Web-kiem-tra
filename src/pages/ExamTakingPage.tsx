@@ -77,7 +77,7 @@ export const ExamTakingPage: React.FC = () => {
     if (currentAssignment?.target_ids && currentAssignment.target_ids.length > 0) {
       return currentAssignment.target_ids[0];
     }
-    return 'Lớp 7A4';
+    return 'Lớp 7A1';
   });
   const [selectedStudentId, setSelectedStudentId] = useState<string>('');
   const [studentSearchKeyword, setStudentSearchKeyword] = useState<string>('');

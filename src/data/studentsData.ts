@@ -30,7 +30,6 @@ export const INITIAL_CLASSES: ClassItem[] = [
 const GRADE_7_NAMES: { [className: string]: string[] } = {
   'Lớp 7A1': [
     'Phàn Thúy Anh',
-    'Phu Mờ Chăn',
     'Lù Hờ Số'
   ],
   'Lớp 7A2': [
@@ -247,31 +246,12 @@ export const INITIAL_STUDENTS: Profile[] = generateInitialRealStudents();
 
 // Lấy danh sách học sinh từ LocalStorage và đánh số lại mã HS liên tục dựa trên học sinh hiện có
 export const getStoredStudents = (): Profile[] => {
-  const DATA_VERSION_KEY = 'geo_students_data_version';
-  const CURRENT_VERSION = 'v5_clean_real_2026';
-
   try {
-    const savedVersion = localStorage.getItem(DATA_VERSION_KEY);
-    if (savedVersion !== CURRENT_VERSION) {
-      localStorage.setItem(DATA_VERSION_KEY, CURRENT_VERSION);
-      localStorage.setItem('geo_classes_students', JSON.stringify(INITIAL_STUDENTS));
-      return INITIAL_STUDENTS;
-    }
-
     const saved = localStorage.getItem('geo_classes_students');
     if (saved) {
       const parsed = JSON.parse(saved);
-      if (Array.isArray(parsed)) {
-        // Lọc bỏ bất kỳ học sinh giả nào bị chèn nhầm ở Khối 6 và Khối 8 nếu có tiền tố s_6_ hoặc s_8_
-        const cleaned = parsed.filter((s: Profile) => {
-          if (s.grade === 6 || s.grade === 8) {
-            return !s.id.startsWith('s_6_') && !s.id.startsWith('s_8_');
-          }
-          return true;
-        });
-
-        const reindexed = reindexAllStudentCodes(cleaned, INITIAL_CLASSES);
-        localStorage.setItem('geo_classes_students', JSON.stringify(reindexed));
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        const reindexed = reindexAllStudentCodes(parsed, INITIAL_CLASSES);
         return reindexed;
       }
     }
@@ -279,10 +259,11 @@ export const getStoredStudents = (): Profile[] => {
     console.warn('Lỗi đọc students từ LocalStorage:', e);
   }
 
-  localStorage.setItem('geo_classes_students', JSON.stringify(INITIAL_STUDENTS));
+  // Chỉ khi chưa có dữ liệu nào mới dùng danh sách mẫu ban đầu
   return INITIAL_STUDENTS;
 };
 
 export const saveStoredStudents = (students: Profile[]) => {
   localStorage.setItem('geo_classes_students', JSON.stringify(students));
+  localStorage.setItem('geo_classes_students_updated_at', new Date().toISOString());
 };
