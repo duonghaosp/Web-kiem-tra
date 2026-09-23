@@ -187,6 +187,13 @@ export const reindexAllStudentCodes = (
     });
   });
 
+  // Đảm bảo không bao giờ bỏ sót bất kỳ học sinh nào (nếu có học sinh chưa được đánh số ở trên)
+  const processedIds = new Set(result.map((s) => s.id));
+  const remaining = studentsList.filter((s) => !processedIds.has(s.id));
+  remaining.forEach((st) => {
+    result.push(st);
+  });
+
   return result;
 };
 

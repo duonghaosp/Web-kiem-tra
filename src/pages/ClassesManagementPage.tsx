@@ -595,6 +595,7 @@ export const ClassesManagementPage: React.FC = () => {
         return;
       }
 
+      let sttCol = -1;
       let fullNameCol = -1;
       let hoDemCol = -1;
       let tenCol = -1;
@@ -603,7 +604,7 @@ export const ClassesManagementPage: React.FC = () => {
       let dobCol = -1;
       let classCol = -1;
 
-      // 1. Quét tìm tiêu đề Lớp trong 20 dòng đầu (ví dụ: "LỚP: 7A1", "DANH SÁCH HỌC SINH LỚP 7A2", "7A3"...)
+      // 1. Quét tìm tiêu đề Lớp trong 20 dòng đầu (ví dụ: "LỚP: 9A1", "DANH SÁCH HỌC SINH LỚP 9A1", "9A2"...)
       let headerDetectedClass = '';
       let headerDetectedGrade = gradeFilter;
 
@@ -615,8 +616,8 @@ export const ClassesManagementPage: React.FC = () => {
           const val = String(row[c] || '').trim();
           if (!val) continue;
 
-          // Kiểm tra xem dòng tiêu đề có chứa tên lớp cụ thể hay không (ví dụ "Lớp 7A1", "7A2", "Lớp 9A1"...)
-          const classMatch = val.match(/(?:lớp|khối|chi\s*đội)?\s*([6-9])\s*([a-dA-D])\s*([1-4])?/i);
+          // Chỉ nhận diện khi có từ khóa Lớp/Khối/Chi đội đi liền với số lớp (ví dụ "Lớp 9A1", "Lớp 9A", "Khối 9"...)
+          const classMatch = val.match(/(?:lớp|khối|chi\s*đội)\s*([6-9])\s*([a-dA-D])\s*([1-4])?/i);
           if (classMatch && !headerDetectedClass) {
             const g = parseInt(classMatch[1]);
             const letter = classMatch[2].toUpperCase();
@@ -636,12 +637,13 @@ export const ClassesManagementPage: React.FC = () => {
           const text = String(cell || '').trim().toLowerCase();
           if (!text) return;
 
-          if (
+          if (text === 'stt' || text === 'tt' || text === 'số tt' || text === 'thứ tự' || text === 'no.' || text === 'no') {
+            if (sttCol === -1) sttCol = cIdx;
+          } else if (
             text === 'họ và tên' ||
             text === 'họ tên' ||
             text === 'họ & tên' ||
             text === 'họ và tên học sinh' ||
-            text === 'tên học sinh' ||
             text === 'họ và tên hs' ||
             text === 'full name' ||
             text === 'fullname' ||
@@ -653,10 +655,12 @@ export const ClassesManagementPage: React.FC = () => {
             text === 'họ đệm' ||
             text === 'họ' ||
             text === 'họ và tên đệm' ||
-            text === 'họ đệm hs'
+            text === 'họ đệm hs' ||
+            text === 'họ lót' ||
+            text === 'họ và chữ lót'
           ) {
             if (hoDemCol === -1) hoDemCol = cIdx;
-          } else if (text === 'tên' || text === 'tên hs' || text === 'tên gọi') {
+          } else if (text === 'tên' || text === 'tên hs' || text === 'tên gọi' || text === 'tên học sinh') {
             if (tenCol === -1) tenCol = cIdx;
           } else if (
             text.includes('ngày sinh') ||
@@ -696,7 +700,7 @@ export const ClassesManagementPage: React.FC = () => {
           }
         });
 
-        if (fullNameCol !== -1 || (hoDemCol !== -1 && tenCol !== -1)) {
+        if ((fullNameCol !== -1 || hoDemCol !== -1) && tenCol !== -1) {
           break;
         }
       }
@@ -733,19 +737,38 @@ export const ClassesManagementPage: React.FC = () => {
         const row = rawRows[r];
         if (!Array.isArray(row) || row.length === 0) continue;
 
+        // Kiểm tra xem dòng này có số thứ tự hợp lệ hay không (STT: 1, 2, 3...)
+        let hasNumericSTT = false;
+        if (sttCol !== -1 && row[sttCol] !== undefined && row[sttCol] !== '') {
+          const sttNum = parseInt(String(row[sttCol]).trim());
+          if (!isNaN(sttNum) && sttNum >= 1 && sttNum <= 500) {
+            hasNumericSTT = true;
+          }
+        }
+
+        // Trích xuất Họ và Tên học sinh
         let fullName = '';
-        if (fullNameCol !== -1 && row[fullNameCol]) {
-          fullName = String(row[fullNameCol]).trim();
-        } else if (hoDemCol !== -1 && tenCol !== -1) {
-          const ho = String(row[hoDemCol] || '').trim();
+        if (tenCol !== -1 && (hoDemCol !== -1 || (fullNameCol !== -1 && fullNameCol !== tenCol))) {
+          const hoColIdx = hoDemCol !== -1 ? hoDemCol : fullNameCol;
+          const ho = String(row[hoColIdx] || '').trim();
           const ten = String(row[tenCol] || '').trim();
-          if (ho && ten) fullName = `${ho} ${ten}`.trim();
-          else if (ten) fullName = ten;
-          else if (ho) fullName = ho;
-        } else if (fullNameCol !== -1) {
+          if (ho && ten) {
+            fullName = ho.toLowerCase().endsWith(ten.toLowerCase()) ? ho : `${ho} ${ten}`;
+          } else if (ten) {
+            fullName = ten;
+          } else if (ho) {
+            fullName = ho;
+          }
+        } else if (fullNameCol !== -1 && row[fullNameCol]) {
+          fullName = String(row[fullNameCol]).trim();
+        } else if (hoDemCol !== -1 && row[hoDemCol]) {
+          fullName = String(row[hoDemCol]).trim();
+        } else {
+          // Fallback: Tìm ô chứa chữ cái tiếng Việt có độ dài >= 2
           for (let c = 0; c < row.length; c++) {
+            if (c === sttCol || c === dobCol || c === classCol) continue;
             const candidate = String(row[c] || '').trim();
-            if (candidate.length >= 3 && candidate.includes(' ') && !/^\d+$/.test(candidate)) {
+            if (candidate.length >= 2 && /[a-zA-Zà-ỹÀ-Ỹ]/.test(candidate) && !/^\d+$/.test(candidate)) {
               fullName = candidate;
               break;
             }
@@ -757,25 +780,32 @@ export const ClassesManagementPage: React.FC = () => {
 
         if (!fullName || fullName.length < 2) continue;
 
-        // Bỏ qua các dòng tiêu đề, thông tin trường/lớp/tổng số
         const lowerName = fullName.toLowerCase();
-        const isHeaderOrMeta =
-          /^(stt|tt|số tt|thứ tự|mã|mã hs|mã học sinh|mã định danh|họ và tên|họ tên|họ & tên|họ và đệm|họ đệm|tên|tên học sinh|ngày sinh|giới tính|dân tộc|địa chỉ|nơi sinh|lớp|khối|năm học|trường|phòng giáo dục|bộ giáo dục|sở giáo dục|danh sách|danh sách học sinh|bảng điểm|tổng số|người lập|giáo viên|hiệu trưởng|ban giám hiệu|ghi chú|kết quả|xếp loại|điểm số)$/i.test(
-            lowerName
-          ) ||
-          lowerName.startsWith('tổng số') ||
-          lowerName.startsWith('danh sách học sinh') ||
-          lowerName.startsWith('trường th') ||
-          lowerName.startsWith('trường ptdtbt') ||
-          lowerName.startsWith('bộ giáo dục') ||
-          lowerName.startsWith('sở giáo dục') ||
-          lowerName.startsWith('phòng giáo dục') ||
-          lowerName.startsWith('giáo viên phụ trách') ||
-          lowerName.startsWith('người lập biểu') ||
-          /^\d+$/.test(fullName);
 
-        if (isHeaderOrMeta) {
-          continue;
+        // Bỏ qua các dòng tiêu đề, thông tin trường/lớp/tổng số (CHỈ BỎ QUA NẾU DÒNG ĐÓ KHÔNG CÓ SỐ THỨ TỰ STT)
+        if (!hasNumericSTT) {
+          const isMetaHeader =
+            /^(stt|tt|số tt|thứ tự|mã|mã hs|mã học sinh|mã định danh|họ và tên|họ tên|họ & tên|họ và đệm|họ đệm|tên|tên học sinh|ngày sinh|giới tính|dân tộc|địa chỉ|nơi sinh|lớp|khối|năm học|trường|phòng giáo dục|bộ giáo dục|sở giáo dục|danh sách|danh sách học sinh|bảng điểm|tổng số|người lập|giáo viên|hiệu trưởng|ban giám hiệu|ghi chú|kết quả|xếp loại|điểm số)$/i.test(
+              lowerName
+            ) ||
+            lowerName.startsWith('tổng số:') ||
+            lowerName.startsWith('tổng số học sinh') ||
+            lowerName.startsWith('danh sách học sinh lớp') ||
+            lowerName.startsWith('danh sách lớp') ||
+            lowerName.startsWith('trường thcs ') ||
+            lowerName.startsWith('trường ptdtbt ') ||
+            lowerName.startsWith('trường th & thcs') ||
+            lowerName.startsWith('trường tiểu học') ||
+            lowerName.startsWith('bộ giáo dục và đào tạo') ||
+            lowerName.startsWith('sở giáo dục và đào tạo') ||
+            lowerName.startsWith('phòng giáo dục và đào tạo') ||
+            lowerName.startsWith('giáo viên chủ nhiệm:') ||
+            lowerName.startsWith('người lập biểu:') ||
+            /^\d+$/.test(fullName);
+
+          if (isMetaHeader) {
+            continue;
+          }
         }
 
         // Xác định Lớp và Khối của từng dòng học sinh
