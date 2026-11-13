@@ -152,9 +152,9 @@ export const AssignmentsPage: React.FC = () => {
     return [];
   });
 
-  const saveAssignments = (newAsgs: Assignment[]) => {
+  const saveAssignments = async (newAsgs: Assignment[]): Promise<void> => {
     setAssignments(newAsgs);
-    saveAssignmentsToCloud(newAsgs);
+    await saveAssignmentsToCloud(newAsgs);
   };
 
   // Danh sách bài nộp của học sinh để hiển thị số lượng nộp bài theo thời gian thực
@@ -224,7 +224,6 @@ export const AssignmentsPage: React.FC = () => {
     window.addEventListener('storage', handleAssignmentsUpdated);
     window.addEventListener('storage', handleSubmissionsUpdated);
     window.addEventListener('storage', handleTrashUpdated);
-    window.addEventListener('focus', syncAssignmentsWithCloud);
 
     return () => {
       window.removeEventListener('geo_assignments_updated', handleAssignmentsUpdated);
@@ -233,7 +232,6 @@ export const AssignmentsPage: React.FC = () => {
       window.removeEventListener('storage', handleAssignmentsUpdated);
       window.removeEventListener('storage', handleSubmissionsUpdated);
       window.removeEventListener('storage', handleTrashUpdated);
-      window.removeEventListener('focus', syncAssignmentsWithCloud);
     };
   }, []);
 
@@ -601,7 +599,7 @@ export const AssignmentsPage: React.FC = () => {
   };
 
   // --- HÀNH ĐỘNG GIAO BÀI CHO HỌC SINH ---
-  const handleConfirmCreateAndAssign = (e: React.FormEvent) => {
+  const handleConfirmCreateAndAssign = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (selectedExamQuestions.length === 0) {
@@ -651,13 +649,17 @@ export const AssignmentsPage: React.FC = () => {
       total_points: structureAnalysis.totalScore,
       submissions_count: 0,
       total_students: createSelectedClasses.length * 35,
+      created_at: new Date().toISOString(),
     };
 
-    saveAssignments([newAssignment, ...assignments]);
+    // Đóng modal trước để giao diện cập nhật ngay
+    setIsCreateModalOpen(false);
+
+    // Lưu đồng bộ và chờ hoàn tất lưu trên Supabase Cloud
+    await saveAssignments([newAssignment, ...assignments]);
 
     // Bắn pháo hoa ăn mừng
     triggerCelebration();
-    setIsCreateModalOpen(false);
 
     alert(`🎉 Tạo đề và giao bài thành công cho các lớp: ${createSelectedClasses.join(', ')}!\nCấu trúc: ${structureAnalysis.objCount} câu Trắc nghiệm (${structureAnalysis.objScore}đ) + ${structureAnalysis.essayCount} câu Tự luận (${structureAnalysis.essayScore}đ).`);
   };

@@ -14,11 +14,46 @@ export async function saveAssignmentsToCloud(assignments: Assignment[]): Promise
 
   if (isSupabaseConfigured) {
     try {
-      // Lưu toàn bộ danh sách vào system_settings để mọi máy tính & điện thoại đều đọc được ngay lập tức
+      // Hợp nhất an toàn với đám mây để tránh ghi đè dữ liệu từ thiết bị khác
+      const { data: cloudRow } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', CLOUD_SETTINGS_KEY)
+        .maybeSingle();
+
+      const existingCloud: Assignment[] =
+        cloudRow?.value?.assignments && Array.isArray(cloudRow.value.assignments)
+          ? cloudRow.value.assignments
+          : [];
+
+      const map = new Map<string, Assignment>();
+      existingCloud.forEach((a) => map.set(String(a.id), a));
+      // Các đề mới nhất do người dùng vừa lưu sẽ cập nhật/ghi đè bản cũ
+      assignments.forEach((a) => map.set(String(a.id), a));
+
+      const mergedAll = Array.from(map.values()).sort((a, b) => {
+        const getTime = (asg: Assignment) => {
+          if (asg.created_at) {
+            const t = new Date(asg.created_at).getTime();
+            if (!isNaN(t)) return t;
+          }
+          if (asg.start_time) {
+            const t = new Date(asg.start_time).getTime();
+            if (!isNaN(t)) return t;
+          }
+          const numMatch = String(asg.id).match(/\d+/);
+          return numMatch ? Number(numMatch[0]) : 0;
+        };
+        return getTime(b) - getTime(a);
+      });
+
+      localStorage.setItem(LOCAL_ASSIGNMENTS_KEY, JSON.stringify(mergedAll));
+
+      // Lưu toàn bộ danh sách hợp nhất vào system_settings
       await supabase.from('system_settings').upsert({
         key: CLOUD_SETTINGS_KEY,
         value: {
-          assignments,
+          assignments: mergedAll,
           updated_at: new Date().toISOString(),
         },
       }, { onConflict: 'key' });
