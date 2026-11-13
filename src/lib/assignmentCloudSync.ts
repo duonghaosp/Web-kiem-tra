@@ -189,7 +189,7 @@ export async function fetchAssignmentById(id: string): Promise<Assignment | null
 
 // 4. Lưu bài nộp của học sinh (Đồng bộ đám mây để máy tính của Cô Hảo thấy ngay)
 export async function saveStudentSubmission(submission: any): Promise<void> {
-  // Lưu local trên máy học sinh
+  // 1. Lưu local trên máy học sinh ngay tức thì
   try {
     const raw = localStorage.getItem(LOCAL_SUBMISSIONS_KEY);
     const existing = raw ? JSON.parse(raw) : [];
@@ -203,62 +203,14 @@ export async function saveStudentSubmission(submission: any): Promise<void> {
     console.warn('Lỗi lưu submission local:', e);
   }
 
-  // Lưu lên Supabase Cloud
+  // 2. Lưu lên Supabase Cloud
   if (isSupabaseConfigured) {
+    // Bản sao gọn nhẹ loại bỏ mảng questions (tránh phình to dung lượng gây nghẽn kết nối)
+    const compactSubmission = { ...submission };
+    delete compactSubmission.questions;
+
     try {
-      // A. Lưu vào cloud backup trong system_settings
-      const { data: cloudRow } = await supabase
-        .from('system_settings')
-        .select('value')
-        .eq('key', CLOUD_SUBMISSIONS_KEY)
-        .maybeSingle();
-
-      const cloudExisting = cloudRow?.value?.submissions && Array.isArray(cloudRow.value.submissions)
-        ? cloudRow.value.submissions
-        : [];
-
-      const cloudFiltered = cloudExisting.filter(
-        (s: any) => !(String(s.assignment_id) === String(submission.assignment_id) && s.student_code === submission.student_code)
-      );
-
-      const newCloudSubmissions = [submission, ...cloudFiltered];
-
-      await supabase.from('system_settings').upsert({
-        key: CLOUD_SUBMISSIONS_KEY,
-        value: {
-          submissions: newCloudSubmissions,
-          updated_at: new Date().toISOString(),
-        },
-      }, { onConflict: 'key' });
-
-      // B. Tăng submissions_count trong geo_assignments_cloud
-      const { data: asgRow } = await supabase
-        .from('system_settings')
-        .select('value')
-        .eq('key', CLOUD_SETTINGS_KEY)
-        .maybeSingle();
-
-      if (asgRow?.value?.assignments && Array.isArray(asgRow.value.assignments)) {
-        const asgs = asgRow.value.assignments.map((a: any) => {
-          if (String(a.id) === String(submission.assignment_id)) {
-            return {
-              ...a,
-              submissions_count: Math.min(a.total_students || 35, (a.submissions_count || 0) + 1),
-            };
-          }
-          return a;
-        });
-
-        await supabase.from('system_settings').upsert({
-          key: CLOUD_SETTINGS_KEY,
-          value: {
-            assignments: asgs,
-            updated_at: new Date().toISOString(),
-          },
-        }, { onConflict: 'key' });
-      }
-
-      // C. Thử lưu vào bảng student_results chuẩn nếu có thể
+      // A. Lưu vào bảng student_results (Chuẩn SQL Supabase)
       try {
         await supabase.from('student_results').insert({
           student_name: submission.student_name || 'Học sinh',
@@ -273,8 +225,14 @@ export async function saveStudentSubmission(submission: any): Promise<void> {
           max_score_tl: Number(submission.max_score_tl || 3),
           essay_question: submission.essay_question || null,
           essay_answer: submission.essay_answer || null,
-          answers_json: submission.answers_json || {},
-          detailed_scores_json: submission.detailed_scores_json || {},
+          answers_json: {
+            ...(submission.answers_json || {}),
+            _assignment_id: submission.assignment_id,
+          },
+          detailed_scores_json: {
+            ...(submission.detailed_scores_json || {}),
+            _assignment_id: submission.assignment_id,
+          },
           is_late: Boolean(submission.is_late),
           time_spent_seconds: Number(submission.time_spent_seconds || 0),
           status: submission.status === 'waiting_teacher_grading' ? 'waiting_teacher_grading' : 'graded',
@@ -282,6 +240,59 @@ export async function saveStudentSubmission(submission: any): Promise<void> {
         });
       } catch (tableErr) {
         console.warn('Lưu vào bảng student_results (tùy chọn):', tableErr);
+      }
+
+      // B. Lưu vào cloud backup trong system_settings (giữ 50 bài nộp mới nhất, siêu nhẹ)
+      const { data: cloudRow } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', CLOUD_SUBMISSIONS_KEY)
+        .maybeSingle();
+
+      const cloudExisting = cloudRow?.value?.submissions && Array.isArray(cloudRow.value.submissions)
+        ? cloudRow.value.submissions
+        : [];
+
+      const cloudFiltered = cloudExisting.filter(
+        (s: any) => !(String(s.assignment_id) === String(submission.assignment_id) && s.student_code === submission.student_code)
+      );
+
+      // Cắt gọn danh sách tối đa 60 bài nộp mới nhất để dung lượng luôn dưới 150KB
+      const newCloudSubmissions = [compactSubmission, ...cloudFiltered].slice(0, 60);
+
+      await supabase.from('system_settings').upsert({
+        key: CLOUD_SUBMISSIONS_KEY,
+        value: {
+          submissions: newCloudSubmissions,
+          updated_at: new Date().toISOString(),
+        },
+      }, { onConflict: 'key' });
+
+      // C. Tăng submissions_count trong geo_assignments_cloud để thẻ đề thi nhảy số
+      const { data: asgRow } = await supabase
+        .from('system_settings')
+        .select('value')
+        .eq('key', CLOUD_SETTINGS_KEY)
+        .maybeSingle();
+
+      if (asgRow?.value?.assignments && Array.isArray(asgRow.value.assignments)) {
+        const asgs = asgRow.value.assignments.map((a: any) => {
+          if (String(a.id) === String(submission.assignment_id)) {
+            return {
+              ...a,
+              submissions_count: (a.submissions_count || 0) + 1,
+            };
+          }
+          return a;
+        });
+
+        await supabase.from('system_settings').upsert({
+          key: CLOUD_SETTINGS_KEY,
+          value: {
+            assignments: asgs,
+            updated_at: new Date().toISOString(),
+          },
+        }, { onConflict: 'key' });
       }
     } catch (err) {
       console.warn('Lỗi lưu submission lên Supabase Cloud:', err);

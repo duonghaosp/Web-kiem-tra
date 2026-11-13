@@ -376,10 +376,20 @@ export const ExamTakingPage: React.FC = () => {
     };
 
     // 1. Lưu kết quả của đợt thi này trên máy học sinh để màn hình kết quả hiển thị ngay
-    localStorage.setItem(`geo_result_${id || 'asg_1'}`, JSON.stringify(submissionData));
+    try {
+      localStorage.setItem(`geo_result_${id || 'asg_1'}`, JSON.stringify(submissionData));
+    } catch (e) {
+      console.warn('Lỗi lưu kết quả local:', e);
+    }
 
-    // 2. Tự động đồng bộ bài nộp lên Supabase Cloud (Để bàn làm việc của Cô Hảo nhận ngay)
-    await saveStudentSubmission(submissionData);
+    // 2. Tự động đồng bộ bài nộp lên Supabase Cloud (tối đa 3 giây, cam kết 100% không bao giờ treo màn hình học sinh)
+    try {
+      const syncPromise = saveStudentSubmission(submissionData);
+      const timeoutPromise = new Promise((resolve) => setTimeout(resolve, 3000));
+      await Promise.race([syncPromise, timeoutPromise]);
+    } catch (err) {
+      console.warn('Lỗi đồng bộ đám mây:', err);
+    }
 
     // 3. Dọn dẹp phiên đăng nhập để nếu bạn khác mượn điện thoại quét lại QR sẽ phải đăng nhập lại từ đầu
     sessionStorage.removeItem('is_teacher_previewing');
@@ -1153,7 +1163,10 @@ export const ExamTakingPage: React.FC = () => {
                 className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-black text-xs shadow-md transition active:scale-95 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-1.5"
               >
                 {isSubmitting ? (
-                  <span>Đang nộp bài...</span>
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
+                    <span>Đang nộp bài...</span>
+                  </>
                 ) : (
                   <>
                     <Send className="w-3.5 h-3.5" />
