@@ -35,11 +35,16 @@ import { normalizeQuestion, normalizeQuestionList } from '../lib/questionUtils';
 export const ExamTakingPage: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const { profile, role, signInAsStudent, signOut, quickLogin } = useAuth();
   const schoolLogo = localStorage.getItem('geo_school_logo') || '';
 
-  // Nhận diện xem giáo viên có đang chủ động xem thử đề thi hay không
-  const isTeacherPreviewing = sessionStorage.getItem('is_teacher_previewing') === 'true';
+  // Nhận diện xem giáo viên có đang chủ động xem thử đề thi hay không (qua session, query param hoặc tài khoản giáo viên)
+  const isTeacherPreviewing =
+    sessionStorage.getItem('is_teacher_previewing') === 'true' ||
+    searchParams.get('preview') === 'true' ||
+    role === 'teacher' ||
+    role === 'admin';
 
   const isMockStudent = React.useMemo(() => {
     return Boolean(
@@ -66,7 +71,6 @@ export const ExamTakingPage: React.FC = () => {
     return null;
   });
 
-  const [searchParams] = useSearchParams();
   const [loadingAssignment, setLoadingAssignment] = useState<boolean>(!currentAssignment);
 
   // Form đăng nhập học sinh: 'by_name' (chọn tên trong lớp) hoặc 'by_code' (nhập mã học sinh)
@@ -426,11 +430,36 @@ export const ExamTakingPage: React.FC = () => {
           <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
             Giáo viên (Cô Dương Thu Hảo) đã xóa hoặc ngừng đợt kiểm tra này. Phía học sinh sẽ không còn nhận được yêu cầu làm bài nữa.
           </p>
-          <div className="pt-2">
+
+          {(role === 'teacher' || role === 'admin' || isTeacherPreviewing) && (
+            <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-left text-xs text-amber-900 space-y-1">
+              <div className="font-bold flex items-center gap-1.5 text-amber-800">
+                <span>💡 Lưu ý dành cho Cô Hảo:</span>
+              </div>
+              <p className="text-[11.5px] text-amber-800 leading-relaxed">
+                Nếu cô vừa nạp câu hỏi hoặc tạo đề mới, cô hãy vào mục <strong>"Tạo Đề & Giao Bài"</strong> và ấn nút <strong>"Xác Nhận Tạo Đề & Giao Bài"</strong> cho lớp để đề thi được kích hoạt chính thức nhé!
+              </p>
+            </div>
+          )}
+
+          <div className="pt-2 space-y-2">
+            {(role === 'teacher' || role === 'admin' || isTeacherPreviewing) && (
+              <button
+                type="button"
+                onClick={() => navigate('/assignments')}
+                className="w-full py-3 px-4 bg-ocean-600 hover:bg-ocean-700 text-white text-xs sm:text-sm font-bold rounded-2xl shadow-sm transition active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+              >
+                <span>👩‍🏫 Đến Trang Tạo Đề & Giao Bài</span>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => navigate('/student-dashboard')}
-              className="w-full py-3 px-4 bg-ocean-600 hover:bg-ocean-700 text-white text-xs sm:text-sm font-bold rounded-2xl shadow-sm transition active:scale-95 cursor-pointer"
+              className={`w-full py-2.5 px-4 text-xs sm:text-sm font-bold rounded-2xl transition active:scale-95 cursor-pointer ${
+                role === 'teacher' || isTeacherPreviewing
+                  ? 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                  : 'bg-ocean-600 hover:bg-ocean-700 text-white shadow-sm'
+              }`}
             >
               Quay lại Góc học tập
             </button>

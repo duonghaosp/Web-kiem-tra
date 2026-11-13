@@ -584,13 +584,13 @@ export const Navbar: React.FC = () => {
                 )}
               </div>
 
-              {/* Tên hiển thị Dương Thu Hảo */}
+              {/* Tên hiển thị */}
               <div className="hidden lg:block text-left">
                 <div className="text-xs font-bold text-slate-800 line-clamp-1 max-w-[130px]">
-                  {profile?.full_name || 'Dương Thu Hảo'}
+                  {profile ? (profile.full_name || 'Dương Thu Hảo') : 'Dương Thu Hảo'}
                 </div>
                 <div className="text-[10px] text-slate-500 font-medium">
-                  {isTeacher ? 'Giáo viên Địa lí' : 'Học sinh'}
+                  {isTeacher ? 'Giáo viên Địa lí' : profile ? 'Học sinh' : 'Chế độ Học sinh'}
                 </div>
               </div>
 

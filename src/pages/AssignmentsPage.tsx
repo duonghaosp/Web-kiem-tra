@@ -627,7 +627,11 @@ export const AssignmentsPage: React.FC = () => {
     const targetAsg = assignments.find((a) => a.id === assignmentId);
     const primaryClass = targetAsg?.target_ids?.[0] || '';
     const classParam = primaryClass ? `?class=${encodeURIComponent(primaryClass)}&grade=${targetAsg?.grade || ''}` : '';
-    const testUrl = `${window.location.origin}/take-exam/${assignmentId}${classParam}`;
+    const isLocalHost = typeof window !== 'undefined' &&
+      (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    const networkIp = localStorage.getItem('geo_network_ip') || '192.168.120.8';
+    const origin = isLocalHost ? `http://${networkIp}:5173` : window.location.origin;
+    const testUrl = `${origin}/take-exam/${assignmentId}${classParam}`;
     navigator.clipboard.writeText(testUrl);
     setCopiedId(assignmentId);
     setTimeout(() => setCopiedId(null), 2000);
@@ -1991,8 +1995,9 @@ export const AssignmentsPage: React.FC = () => {
           questions={previewQuestions}
           onClose={() => setPreviewAssignment(null)}
           onTakeExamAsStudent={(assignmentId) => {
+            sessionStorage.setItem('is_teacher_previewing', 'true');
             setPreviewAssignment(null);
-            navigate(`/take-exam/${assignmentId}`);
+            navigate(`/take-exam/${assignmentId}?preview=true`);
           }}
           onEditQuestions={(asg) => {
             setPreviewAssignment(null);

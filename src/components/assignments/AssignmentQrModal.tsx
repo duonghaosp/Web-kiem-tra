@@ -17,11 +17,29 @@ export const AssignmentQrModal: React.FC<AssignmentQrModalProps> = ({
   const [copied, setCopied] = useState(false);
   const [isProjectorMode, setIsProjectorMode] = useState(false);
 
+  const isLocalHost =
+    typeof window !== 'undefined' &&
+    (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
+  // Cho phép lưu địa chỉ IP Wi-Fi cục bộ để điện thoại quét mã truy cập được vào máy tính
+  const [networkIp, setNetworkIp] = useState<string>(() => {
+    return localStorage.getItem('geo_network_ip') || '192.168.120.8';
+  });
+  const [qrTargetMode, setQrTargetMode] = useState<'network' | 'localhost'>(
+    isLocalHost ? 'network' : 'localhost'
+  );
+
   if (!isOpen || !assignment) return null;
 
   const primaryClass = assignment.target_ids && assignment.target_ids.length > 0 ? assignment.target_ids[0] : '';
   const classQuery = primaryClass ? `?class=${encodeURIComponent(primaryClass)}&grade=${assignment.grade || ''}` : '';
-  const examUrl = `${window.location.origin}/take-exam/${assignment.id}${classQuery}`;
+
+  const effectiveOrigin =
+    isLocalHost && qrTargetMode === 'network' && networkIp.trim()
+      ? `http://${networkIp.trim()}:5173`
+      : window.location.origin;
+
+  const examUrl = `${effectiveOrigin}/take-exam/${assignment.id}${classQuery}`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(examUrl);
@@ -109,6 +127,46 @@ export const AssignmentQrModal: React.FC<AssignmentQrModalProps> = ({
           </div>
         </div>
 
+        {/* CẢNH BÁO & LỰA CHỌN MÃ QR KHI CHẠY LOCALHOST TRÊN MÁY TÍNH */}
+        {isLocalHost && (
+          <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-xs space-y-2 text-left">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <span className="font-bold text-amber-900 flex items-center gap-1.5">
+                <span>📶 Địa chỉ quét QR cho điện thoại:</span>
+              </span>
+              <div className="flex items-center gap-1 bg-white rounded-xl p-1 border border-amber-200">
+                <button
+                  type="button"
+                  onClick={() => setQrTargetMode('network')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                    qrTargetMode === 'network'
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="Điện thoại quét mã này để kết nối tới máy tính qua mạng Wi-Fi"
+                >
+                  Wi-Fi ({networkIp})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setQrTargetMode('localhost')}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                    qrTargetMode === 'localhost'
+                      ? 'bg-amber-500 text-white shadow-xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                  title="Dùng khi cô thử nghiệm trên chính máy tính"
+                >
+                  localhost
+                </button>
+              </div>
+            </div>
+            <p className="text-[11px] text-amber-800 leading-relaxed">
+              💡 <strong>Lưu ý:</strong> Khi dùng điện thoại quét mã, điện thoại của cô cần kết nối <strong>chung mạng Wi-Fi với máy tính</strong> để truy cập được vào máy chủ chạy thử nhé!
+            </p>
+          </div>
+        )}
+
         {/* Khung chứa mã QR */}
         <div className="flex flex-col items-center justify-center py-2 space-y-3">
           <div className="p-4 bg-white rounded-3xl shadow-md border-2 border-purple-200 inline-block ring-4 ring-purple-50">
@@ -175,7 +233,7 @@ export const AssignmentQrModal: React.FC<AssignmentQrModalProps> = ({
 
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <a
-              href={examUrl}
+              href={`${examUrl}${examUrl.includes('?') ? '&' : '?'}preview=true`}
               target="_blank"
               rel="noreferrer"
               className="flex-1 sm:flex-none flex items-center justify-center gap-1 px-3 py-2 text-slate-600 hover:text-slate-900 text-xs font-semibold hover:bg-slate-100 rounded-xl transition"
