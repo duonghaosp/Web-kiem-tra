@@ -256,11 +256,15 @@ export const AssignmentsPage: React.FC = () => {
         setTrashAssignments(cloudTrash);
       }
       const now = new Date();
-      setLastSyncedTime(
-        `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
-      );
+      const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
+      setLastSyncedTime(timeStr);
+
+      const count = cloudAsgs?.length || 0;
+      const topList = cloudAsgs ? cloudAsgs.slice(0, 3).map((a, i) => `${i + 1}. ${a.title} (${a.questions_count || 0} câu)`).join('\n') : '';
+      alert(`🔄 Đã đồng bộ mới nhất từ Đám Mây (${timeStr})!\n\nTổng cộng: ${count} đề kiểm tra trên hệ thống:\n${topList}\n\nToàn bộ đề thi đã được cập nhật hiển thị ngay lập tức.`);
     } catch (err) {
       console.warn('Lỗi làm mới:', err);
+      alert('⚠️ Không thể tải dữ liệu từ Đám mây. Vui lòng kiểm tra lại kết nối mạng hoặc thử lại sau vài giây.');
     } finally {
       setIsSyncing(false);
     }

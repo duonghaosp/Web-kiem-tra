@@ -24,6 +24,12 @@ export const isSupabaseConfigured = Boolean(
 
 // Khởi tạo Supabase Client
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  global: {
+    headers: {
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Pragma': 'no-cache',
+    },
+  },
   auth: {
     persistSession: true,
     autoRefreshToken: true,
