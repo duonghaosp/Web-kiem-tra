@@ -38,6 +38,7 @@ import {
   VolumeX,
   FileEdit,
   Cloud,
+  Search,
 } from 'lucide-react';
 import { Assignment, TargetType, Question, QuestionType, Profile } from '../types/database';
 import { getStoredLessons, LessonItem } from '../data/curriculum';
@@ -57,6 +58,7 @@ import { AssignmentPreviewModal } from '../components/assignments/AssignmentPrev
 import { DeleteAssignmentWarningModal } from '../components/assignments/DeleteAssignmentWarningModal';
 import { AssignmentTrashModal } from '../components/assignments/AssignmentTrashModal';
 import { EditAssignmentQuestionsModal } from '../components/assignments/EditAssignmentQuestionsModal';
+import { SubmissionStatusModal } from '../components/assignments/SubmissionStatusModal';
 import {
   saveAssignmentsToCloud,
   fetchAssignmentsFromCloud,
@@ -334,6 +336,59 @@ export const AssignmentsPage: React.FC = () => {
   // Modal cảnh báo an toàn khi xóa bài có học sinh đã nộp (Gợi ý 3)
   const [warningModalAssignment, setWarningModalAssignment] = useState<Assignment | null>(null);
   const [warningModalSubmissionsCount, setWarningModalSubmissionsCount] = useState<number>(0);
+
+  // Modal Xem chi tiết danh sách học sinh đã nộp / chưa nộp bài (Gợi ý 1)
+  const [statusModalAssignment, setStatusModalAssignment] = useState<Assignment | null>(null);
+
+  // Bộ lọc danh sách bài kiểm tra (Gợi ý 3)
+  const [filterGrade, setFilterGrade] = useState<number | 'all'>('all');
+  const [filterClass, setFilterClass] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<'all' | 'active' | 'paused' | 'has_submissions'>('all');
+  const [searchAssignmentTerm, setSearchAssignmentTerm] = useState<string>('');
+
+  // Danh sách các lớp xuất hiện trong các đề thi đã giao để đưa vào dropdown lọc
+  const availableClassesForFilter = useMemo(() => {
+    const set = new Set<string>();
+    assignments.forEach((a) => {
+      (a.target_ids || []).forEach((c) => set.add(c));
+    });
+    return Array.from(set).sort();
+  }, [assignments]);
+
+  // Danh sách bài kiểm tra sau khi áp dụng bộ lọc (Khối, Lớp, Trạng thái, Tìm kiếm)
+  const filteredAssignments = useMemo(() => {
+    return assignments.filter((asg) => {
+      // 1. Lọc theo Khối
+      if (filterGrade !== 'all' && asg.grade && Number(asg.grade) !== Number(filterGrade)) {
+        return false;
+      }
+      // 2. Lọc theo Lớp
+      if (filterClass !== 'all' && asg.target_ids && !asg.target_ids.includes(filterClass)) {
+        return false;
+      }
+      // 3. Lọc theo Trạng thái
+      if (filterStatus === 'active' && asg.is_paused) return false;
+      if (filterStatus === 'paused' && !asg.is_paused) return false;
+      if (filterStatus === 'has_submissions') {
+        const subsCount =
+          studentSubmissions.filter((s: any) => s.assignment_id === asg.id).length ||
+          asg.submissions_count ||
+          0;
+        if (subsCount === 0) return false;
+      }
+      // 4. Tìm kiếm từ khóa
+      if (searchAssignmentTerm.trim()) {
+        const term = searchAssignmentTerm.toLowerCase();
+        const title = (asg.title || '').toLowerCase();
+        const cat = (asg.category || '').toLowerCase();
+        const classes = (asg.target_ids || []).join(' ').toLowerCase();
+        if (!title.includes(term) && !cat.includes(term) && !classes.includes(term)) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [assignments, filterGrade, filterClass, filterStatus, searchAssignmentTerm, studentSubmissions]);
 
   // --- CÁC BƯỚC CỦA QUY TRÌNH TẠO ĐỀ & GIAO BÀI ---
   // 1. Chọn Khối
@@ -648,7 +703,31 @@ export const AssignmentsPage: React.FC = () => {
       return;
     }
 
-    // Xác nhận số lượng câu hỏi trước khi giao bài (Gợi ý 2)
+    // Cảnh báo khi giao đề cho lớp chưa có học sinh trong danh sách (Gợi ý 2)
+    const emptyClasses = createSelectedClasses.filter(
+      (cls) => students.filter((s) => s.class_name === cls).length === 0
+    );
+
+    if (emptyClasses.length === createSelectedClasses.length) {
+      const proceedEmpty = window.confirm(
+        `⚠️ CẢNH BÁO LỚP CHƯA CÓ HỌC SINH:\n\n` +
+        `Tất cả các lớp cô chọn (${emptyClasses.join(', ')}) hiện ĐỀU CHƯA CÓ danh sách học sinh trong hệ thống (Sĩ số: 0 học sinh)!\n\n` +
+        `• Cô có thể vào mục "Quản Lý Lớp Học" để nạp danh sách học sinh trước khi giao bài.\n` +
+        `• Nếu cô vẫn muốn giao đề trước (sau đó nạp học sinh sau), bấm "OK" để tiếp tục.\n\n` +
+        `Cô có muốn tiếp tục giao bài không ạ?`
+      );
+      if (!proceedEmpty) return;
+    } else if (emptyClasses.length > 0) {
+      const proceedPartial = window.confirm(
+        `⚠️ LƯU Ý SĨ SỐ HỌC SINH:\n\n` +
+        `Các lớp sau hiện chưa có học sinh trong danh sách: ${emptyClasses.join(', ')}.\n` +
+        `Các lớp còn lại có đầy đủ học sinh.\n\n` +
+        `Cô có muốn tiếp tục giao đề cho tất cả các lớp đã chọn không ạ?`
+      );
+      if (!proceedPartial) return;
+    }
+
+    // Xác nhận số lượng câu hỏi trước khi giao bài
     const confirmMsg =
       `Cô Hảo ơi, cô đang chuẩn bị giao bài kiểm tra:\n\n` +
       `📌 Tên đề: "${examTitle.trim() || `Kiểm Tra Địa Lí Khối ${createGrade}`}"\n` +
@@ -1020,7 +1099,124 @@ export const AssignmentsPage: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Danh sách các bài kiểm tra đã giao */}
+      {/* 2. THANH TÌM KIẾM & BỘ LỌC BÀI KIỂM TRA (GỢI Ý 3) */}
+      {assignments.length > 0 && (
+        <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/90 shadow-2xs space-y-3.5">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+            {/* Ô tìm kiếm */}
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchAssignmentTerm}
+                onChange={(e) => setSearchAssignmentTerm(e.target.value)}
+                placeholder="Tìm bài kiểm tra theo tên đề, loại kiểm tra hoặc lớp..."
+                className="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-slate-50 border border-slate-200 rounded-2xl focus:bg-white focus:border-ocean-500 focus:outline-hidden transition"
+              />
+              {searchAssignmentTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSearchAssignmentTerm('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Dropdown Lọc theo Lớp & Trạng thái */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Lọc theo Lớp */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-1.5 text-xs font-medium text-slate-700">
+                <Users className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-[11px] text-slate-500">Lớp:</span>
+                <select
+                  value={filterClass}
+                  onChange={(e) => setFilterClass(e.target.value)}
+                  className="bg-transparent font-bold text-slate-800 text-xs focus:outline-hidden cursor-pointer"
+                >
+                  <option value="all">Tất cả lớp ({availableClassesForFilter.length})</option>
+                  {availableClassesForFilter.map((cls) => (
+                    <option key={cls} value={cls}>
+                      {cls}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Lọc theo Trạng thái */}
+              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-2xl px-3 py-1.5 text-xs font-medium text-slate-700">
+                <Filter className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-[11px] text-slate-500">Trạng thái:</span>
+                <select
+                  value={filterStatus}
+                  onChange={(e) => setFilterStatus(e.target.value as any)}
+                  className="bg-transparent font-bold text-slate-800 text-xs focus:outline-hidden cursor-pointer"
+                >
+                  <option value="all">Tất cả trạng thái</option>
+                  <option value="active">▶️ Đang nhận bài</option>
+                  <option value="paused">⏸️ Đang tạm dừng</option>
+                  <option value="has_submissions">📝 Đã có bài nộp</option>
+                </select>
+              </div>
+
+              {/* Nút Đặt lại bộ lọc nếu có điều kiện lọc đang bật */}
+              {(filterGrade !== 'all' || filterClass !== 'all' || filterStatus !== 'all' || searchAssignmentTerm) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFilterGrade('all');
+                    setFilterClass('all');
+                    setFilterStatus('all');
+                    setSearchAssignmentTerm('');
+                  }}
+                  className="text-xs font-bold text-rose-600 hover:text-rose-800 hover:bg-rose-50 px-2.5 py-1.5 rounded-xl transition cursor-pointer"
+                >
+                  ✕ Đặt lại
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Lọc nhanh theo Khối (Tất cả, 6, 7, 8, 9) */}
+          <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 flex-wrap">
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mr-1">Khối:</span>
+              <button
+                type="button"
+                onClick={() => setFilterGrade('all')}
+                className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                  filterGrade === 'all'
+                    ? 'bg-ocean-600 text-white shadow-2xs'
+                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                }`}
+              >
+                Tất cả khối
+              </button>
+              {[6, 7, 8, 9].map((g) => (
+                <button
+                  key={g}
+                  type="button"
+                  onClick={() => setFilterGrade(g)}
+                  className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                    filterGrade === g
+                      ? 'bg-ocean-600 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  Khối {g}
+                </button>
+              ))}
+            </div>
+
+            <div className="text-[11px] font-bold text-slate-500">
+              Hiển thị <span className="text-ocean-700 font-black">{filteredAssignments.length}</span> / {assignments.length} đề thi
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Danh sách các bài kiểm tra đã giao */}
       <div className="space-y-4">
         {assignments.length === 0 ? (
           <div className="py-16 text-center bg-white rounded-3xl border-2 border-dashed border-slate-200">
@@ -1032,8 +1228,28 @@ export const AssignmentsPage: React.FC = () => {
               Cô hãy bấm nút <strong className="text-ocean-700">"Tạo Đề & Giao Bài Mới"</strong> hoặc chọn đề từ <strong className="text-amber-700">"Thư Viện Đề Mẫu"</strong> ở trên để giao cho học sinh nhé!
             </p>
           </div>
+        ) : filteredAssignments.length === 0 ? (
+          <div className="py-12 text-center bg-white rounded-3xl border border-slate-200 p-6 space-y-2">
+            <Filter className="w-10 h-10 mx-auto text-slate-300" />
+            <h4 className="font-bold text-slate-700 text-sm">Không tìm thấy bài kiểm tra nào phù hợp</h4>
+            <p className="text-xs text-slate-500">
+              Không có bài thi nào khớp với bộ lọc hoặc từ khóa "{searchAssignmentTerm}".
+            </p>
+            <button
+              type="button"
+              onClick={() => {
+                setFilterGrade('all');
+                setFilterClass('all');
+                setFilterStatus('all');
+                setSearchAssignmentTerm('');
+              }}
+              className="mt-2 px-4 py-1.5 bg-ocean-50 text-ocean-700 hover:bg-ocean-100 rounded-xl text-xs font-bold transition cursor-pointer"
+            >
+              Xóa bộ lọc để xem toàn bộ đề thi
+            </button>
+          </div>
         ) : (
-          assignments.map((asg) => {
+          filteredAssignments.map((asg) => {
             const actualSubmissionsCount = studentSubmissions.filter(
               (s: any) => s.assignment_id === asg.id
             ).length || asg.submissions_count || 0;
@@ -1115,18 +1331,40 @@ export const AssignmentsPage: React.FC = () => {
                             : 'Không giới hạn'}
                         </strong>
                       </span>
-                      <span>
-                        Đã nộp:{' '}
-                        <strong className="text-ocean-700 font-bold">
-                          {actualSubmissionsCount}/{realTotalStudents}
-                        </strong>{' '}
-                        học sinh ({submissionPercent}%)
-                      </span>
+
+                      {/* Nút bấm xem danh sách đã nộp / chưa nộp bài (Gợi ý 1) */}
+                      <button
+                        type="button"
+                        onClick={() => setStatusModalAssignment(asg)}
+                        className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-blue-50/80 hover:bg-blue-100 text-blue-900 border border-blue-200 text-xs font-medium transition cursor-pointer group/sub"
+                        title="Bấm để xem danh sách chi tiết học sinh đã nộp / chưa nộp"
+                      >
+                        <Users className="w-3.5 h-3.5 text-blue-600 group-hover/sub:scale-110 transition" />
+                        <span>
+                          Đã nộp:{' '}
+                          <strong className="text-blue-700 font-bold">
+                            {actualSubmissionsCount}/{realTotalStudents}
+                          </strong>{' '}
+                          học sinh ({submissionPercent}%)
+                        </span>
+                        <span className="text-[10px] font-bold text-blue-600 underline ml-0.5">Chi tiết →</span>
+                      </button>
                     </div>
                   </div>
 
                   {/* Các nút hành động */}
                   <div className="flex flex-wrap items-center gap-2 shrink-0">
+                    {/* Nút Xem danh sách học sinh đã nộp / chưa nộp bài (Gợi ý 1) */}
+                    <button
+                      type="button"
+                      onClick={() => setStatusModalAssignment(asg)}
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-800 text-xs font-bold transition active:scale-95 border border-blue-200 cursor-pointer shadow-2xs"
+                      title="Xem danh sách học sinh đã nộp / chưa nộp bài và sao chép gửi Zalo"
+                    >
+                      <Users className="w-3.5 h-3.5 text-blue-600" />
+                      <span>DS Nộp Bài</span>
+                    </button>
+
                     {/* Nút Xem lại đề thi đã giao (Cô Hảo yêu cầu) */}
                     <button
                       type="button"
@@ -1442,18 +1680,25 @@ export const AssignmentsPage: React.FC = () => {
                         onClick={() => toggleClassSelection(cls)}
                         className={`p-2.5 rounded-xl border text-xs font-bold transition flex items-center justify-between ${
                           isChecked
-                            ? 'bg-ocean-50 border-ocean-400 text-ocean-950 shadow-xs'
+                            ? countInClass === 0
+                              ? 'bg-amber-50/80 border-amber-400 text-amber-950 shadow-xs'
+                              : 'bg-ocean-50 border-ocean-400 text-ocean-950 shadow-xs'
                             : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
                         <div className="flex flex-col text-left">
-                          <span>{cls}</span>
-                          <span className="text-[10px] font-normal text-slate-500">
-                            {countInClass > 0 ? `${countInClass} học sinh` : 'Chưa có DS'}
+                          <span className="flex items-center gap-1">
+                            {cls}
+                            {countInClass === 0 && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 inline-block" title="Lớp chưa có học sinh" />
+                            )}
+                          </span>
+                          <span className={`text-[10px] font-normal ${countInClass === 0 ? 'text-amber-700 font-semibold' : 'text-slate-500'}`}>
+                            {countInClass > 0 ? `${countInClass} học sinh` : 'Chưa có DS (0 HS)'}
                           </span>
                         </div>
                         {isChecked ? (
-                          <CheckCircle2 className="w-4 h-4 text-ocean-600 fill-ocean-100 shrink-0" />
+                          <CheckCircle2 className={`w-4 h-4 shrink-0 ${countInClass === 0 ? 'text-amber-600 fill-amber-100' : 'text-ocean-600 fill-ocean-100'}`} />
                         ) : (
                           <div className="w-4 h-4 rounded-full border border-slate-300 shrink-0" />
                         )}
@@ -1461,6 +1706,35 @@ export const AssignmentsPage: React.FC = () => {
                     );
                   })}
                 </div>
+
+                {/* Cảnh báo lớp chưa có học sinh (Gợi ý 2) */}
+                {(() => {
+                  const emptyClasses = createSelectedClasses.filter(
+                    (cls) => students.filter((s) => s.class_name === cls).length === 0
+                  );
+                  if (emptyClasses.length === 0) return null;
+                  return (
+                    <div className="p-3 bg-amber-50/90 border border-amber-300 rounded-xl text-xs text-amber-900 flex items-start gap-2 shadow-2xs">
+                      <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5 flex-1 text-left">
+                        <p className="font-bold text-amber-950">
+                          ⚠️ Chú ý: Lớp {emptyClasses.join(', ')} hiện chưa có học sinh trong danh sách (0 học sinh)!
+                        </p>
+                        <p className="text-[11px] text-amber-800 leading-relaxed">
+                          Cô vẫn có thể giao đề bình thường, nhưng học sinh sẽ chưa có tên trong danh sách nộp bài. Cô có thể vào mục{' '}
+                          <Link
+                            to="/classes"
+                            target="_blank"
+                            className="font-bold text-ocean-700 underline hover:text-ocean-900"
+                          >
+                            Quản Lý Lớp Học
+                          </Link>{' '}
+                          để thêm danh sách học sinh nhé.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 <div className="text-[11px] font-medium text-slate-600 flex items-center justify-between pt-1 border-t border-slate-200/60">
                   <span>
@@ -2160,6 +2434,15 @@ export const AssignmentsPage: React.FC = () => {
         onRestore={(id) => handleRestoreFromTrash(id)}
         onPermanentDelete={(id) => handlePermanentDeleteFromTrash(id)}
         onEmptyTrash={handleEmptyTrash}
+      />
+
+      {/* MODAL XEM CHI TIẾT DANH SÁCH ĐÃ NỘP / CHƯA NỘP & SAO CHÉP GỬI ZALO (GỢI Ý 1) */}
+      <SubmissionStatusModal
+        isOpen={Boolean(statusModalAssignment)}
+        onClose={() => setStatusModalAssignment(null)}
+        assignment={statusModalAssignment}
+        students={students}
+        studentSubmissions={studentSubmissions}
       />
     </div>
   );
