@@ -61,6 +61,8 @@ import {
   fetchStudentSubmissionsFromCloud,
   saveTrashToCloud,
   fetchTrashFromCloud,
+  deleteAssignmentFromCloud,
+  restoreAssignmentFromCloud,
 } from '../lib/assignmentCloudSync';
 import { playSubmissionNotificationSound, isSoundEnabled, toggleSoundEnabled } from '../utils/soundEffects';
 
@@ -711,15 +713,19 @@ export const AssignmentsPage: React.FC = () => {
   };
 
   // 2. Chuyển bài kiểm tra vào Thùng rác (Gợi ý 2)
-  const handleMoveToTrash = (asg: Assignment) => {
+  const handleMoveToTrash = async (asg: Assignment) => {
     const deletedItem: Assignment = {
       ...asg,
       deleted_at: new Date().toISOString(),
     };
-    saveTrashAssignments([deletedItem, ...trashAssignments]);
 
-    const updated = assignments.filter((a) => a.id !== asg.id);
-    saveAssignments(updated);
+    // Cập nhật state cục bộ ngay tức thì
+    setAssignments((prev) => prev.filter((a) => a.id !== asg.id));
+    setTrashAssignments((prev) => [deletedItem, ...prev.filter((t) => t.id !== asg.id)]);
+    setWarningModalAssignment(null);
+
+    // Đồng bộ xóa trên Cloud và lưu vào thùng rác
+    await deleteAssignmentFromCloud(asg.id, deletedItem);
 
     // Xóa thông báo gửi đến học sinh
     try {
@@ -733,18 +739,20 @@ export const AssignmentsPage: React.FC = () => {
       console.warn(e);
     }
 
-    window.dispatchEvent(new Event('geo_assignments_updated'));
-    window.dispatchEvent(new Event('storage'));
-    setWarningModalAssignment(null);
     alert(
       `🗑️ Đã chuyển bài kiểm tra "${asg.title}" vào Thùng rác.\nPhía học sinh sẽ không còn thấy bài này. Cô có thể bấm nút "Thùng Rác" ở phía trên để xem hoặc khôi phục lại bất kỳ lúc nào!`
     );
   };
 
   // 3. Xóa vĩnh viễn khỏi hệ thống
-  const handleForceDelete = (asg: Assignment) => {
-    const updated = assignments.filter((a) => a.id !== asg.id);
-    saveAssignments(updated);
+  const handleForceDelete = async (asg: Assignment) => {
+    // Cập nhật state cục bộ ngay tức thì
+    setAssignments((prev) => prev.filter((a) => a.id !== asg.id));
+    setTrashAssignments((prev) => prev.filter((t) => t.id !== asg.id));
+    setWarningModalAssignment(null);
+
+    // Xóa triệt để cả LocalStorage và Supabase Cloud
+    await deleteAssignmentFromCloud(asg.id);
 
     try {
       const subs = JSON.parse(localStorage.getItem('geo_student_submissions') || '[]');
@@ -765,9 +773,6 @@ export const AssignmentsPage: React.FC = () => {
       console.warn(e);
     }
 
-    window.dispatchEvent(new Event('geo_assignments_updated'));
-    window.dispatchEvent(new Event('storage'));
-    setWarningModalAssignment(null);
     alert(`✅ Đã xóa hoàn toàn bài kiểm tra "${asg.title}" và giải phóng dữ liệu liên quan.`);
   };
 
@@ -799,37 +804,43 @@ export const AssignmentsPage: React.FC = () => {
   };
 
   // Khôi phục đề từ Thùng rác (Gợi ý 2)
-  const handleRestoreFromTrash = (id: string) => {
+  const handleRestoreFromTrash = async (id: string) => {
     const target = trashAssignments.find((t) => t.id === id);
     if (!target) return;
 
+    setTrashAssignments((prev) => prev.filter((t) => t.id !== id));
     const { deleted_at, ...cleanAsg } = target;
-    saveTrashAssignments(trashAssignments.filter((t) => t.id !== id));
-    saveAssignments([cleanAsg as Assignment, ...assignments]);
+    setAssignments((prev) => [cleanAsg as Assignment, ...prev.filter((a) => a.id !== id)]);
 
-    window.dispatchEvent(new Event('geo_assignments_updated'));
-    window.dispatchEvent(new Event('storage'));
+    await restoreAssignmentFromCloud(target);
+
     alert(
       `🎉 Đã khôi phục bài kiểm tra "${cleanAsg.title}" thành công!\nHọc sinh đã có thể tiếp tục nhìn thấy và làm bài.`
     );
   };
 
   // Xóa vĩnh viễn 1 bài trong Thùng rác
-  const handlePermanentDeleteFromTrash = (id: string) => {
+  const handlePermanentDeleteFromTrash = async (id: string) => {
     const target = trashAssignments.find((t) => t.id === id);
     if (
       confirm(
         `Cô có chắc chắn muốn xóa vĩnh viễn bài kiểm tra "${target?.title || ''}" không?\nHành động này không thể hoàn tác.`
       )
     ) {
-      saveTrashAssignments(trashAssignments.filter((t) => t.id !== id));
+      setTrashAssignments((prev) => prev.filter((t) => t.id !== id));
+      await deleteAssignmentFromCloud(id);
     }
   };
 
   // Dọn sạch toàn bộ Thùng rác
-  const handleEmptyTrash = () => {
+  const handleEmptyTrash = async () => {
     if (confirm('Cô có chắc chắn muốn dọn sạch toàn bộ Thùng rác không?')) {
-      saveTrashAssignments([]);
+      const idsToDelete = trashAssignments.map((t) => t.id);
+      setTrashAssignments([]);
+      await saveTrashToCloud([]);
+      for (const id of idsToDelete) {
+        await deleteAssignmentFromCloud(id);
+      }
     }
   };
 
