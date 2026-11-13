@@ -55,7 +55,13 @@ import { AssignmentPreviewModal } from '../components/assignments/AssignmentPrev
 import { DeleteAssignmentWarningModal } from '../components/assignments/DeleteAssignmentWarningModal';
 import { AssignmentTrashModal } from '../components/assignments/AssignmentTrashModal';
 import { EditAssignmentQuestionsModal } from '../components/assignments/EditAssignmentQuestionsModal';
-import { saveAssignmentsToCloud, fetchAssignmentsFromCloud, fetchStudentSubmissionsFromCloud } from '../lib/assignmentCloudSync';
+import {
+  saveAssignmentsToCloud,
+  fetchAssignmentsFromCloud,
+  fetchStudentSubmissionsFromCloud,
+  saveTrashToCloud,
+  fetchTrashFromCloud,
+} from '../lib/assignmentCloudSync';
 import { playSubmissionNotificationSound, isSoundEnabled, toggleSoundEnabled } from '../utils/soundEffects';
 
 // Các hình thức đánh giá kiểm tra chuẩn theo Bộ Giáo dục & Đào tạo
@@ -160,21 +166,43 @@ export const AssignmentsPage: React.FC = () => {
     return [];
   });
 
-  // Tự động đồng bộ đề thi và bài nộp với Supabase Cloud khi vào trang
+  // Tự động đồng bộ đề thi, bài nộp và thùng rác với Supabase Cloud khi vào trang hoặc chuyển lại tab
   useEffect(() => {
     async function syncAssignmentsWithCloud() {
-      const [cloudAsgs, cloudSubs] = await Promise.all([
-        fetchAssignmentsFromCloud(),
-        fetchStudentSubmissionsFromCloud(),
-      ]);
-      if (cloudAsgs && cloudAsgs.length > 0) {
-        setAssignments(cloudAsgs);
-      }
-      if (cloudSubs && cloudSubs.length > 0) {
-        setStudentSubmissions(cloudSubs);
+      setIsSyncing(true);
+      try {
+        const [cloudAsgs, cloudSubs, cloudTrash] = await Promise.all([
+          fetchAssignmentsFromCloud(),
+          fetchStudentSubmissionsFromCloud(),
+          fetchTrashFromCloud(),
+        ]);
+        if (cloudAsgs && cloudAsgs.length > 0) {
+          setAssignments(cloudAsgs);
+        }
+        if (cloudSubs && cloudSubs.length > 0) {
+          setStudentSubmissions(cloudSubs);
+        }
+        if (cloudTrash && cloudTrash.length > 0) {
+          setTrashAssignments(cloudTrash);
+        }
+        const now = new Date();
+        setLastSyncedTime(
+          `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`
+        );
+      } catch (err) {
+        console.warn('Lỗi tự động đồng bộ đám mây:', err);
+      } finally {
+        setIsSyncing(false);
       }
     }
     syncAssignmentsWithCloud();
+
+    const handleAssignmentsUpdated = () => {
+      try {
+        const saved = localStorage.getItem('geo_assignments');
+        if (saved) setAssignments(JSON.parse(saved));
+      } catch (e) {}
+    };
 
     const handleSubmissionsUpdated = () => {
       try {
@@ -183,11 +211,29 @@ export const AssignmentsPage: React.FC = () => {
       } catch (e) {}
     };
 
+    const handleTrashUpdated = () => {
+      try {
+        const saved = localStorage.getItem('geo_deleted_assignments');
+        if (saved) setTrashAssignments(JSON.parse(saved));
+      } catch (e) {}
+    };
+
+    window.addEventListener('geo_assignments_updated', handleAssignmentsUpdated);
     window.addEventListener('geo_student_submissions_updated', handleSubmissionsUpdated);
+    window.addEventListener('geo_trash_updated', handleTrashUpdated);
+    window.addEventListener('storage', handleAssignmentsUpdated);
     window.addEventListener('storage', handleSubmissionsUpdated);
+    window.addEventListener('storage', handleTrashUpdated);
+    window.addEventListener('focus', syncAssignmentsWithCloud);
+
     return () => {
+      window.removeEventListener('geo_assignments_updated', handleAssignmentsUpdated);
       window.removeEventListener('geo_student_submissions_updated', handleSubmissionsUpdated);
+      window.removeEventListener('geo_trash_updated', handleTrashUpdated);
+      window.removeEventListener('storage', handleAssignmentsUpdated);
       window.removeEventListener('storage', handleSubmissionsUpdated);
+      window.removeEventListener('storage', handleTrashUpdated);
+      window.removeEventListener('focus', syncAssignmentsWithCloud);
     };
   }, []);
 
@@ -197,15 +243,19 @@ export const AssignmentsPage: React.FC = () => {
   const handleManualRefresh = async () => {
     setIsSyncing(true);
     try {
-      const [cloudAsgs, cloudSubs] = await Promise.all([
+      const [cloudAsgs, cloudSubs, cloudTrash] = await Promise.all([
         fetchAssignmentsFromCloud(),
         fetchStudentSubmissionsFromCloud(),
+        fetchTrashFromCloud(),
       ]);
       if (cloudAsgs && cloudAsgs.length > 0) {
         setAssignments(cloudAsgs);
       }
       if (cloudSubs && cloudSubs.length > 0) {
         setStudentSubmissions(cloudSubs);
+      }
+      if (cloudTrash && cloudTrash.length > 0) {
+        setTrashAssignments(cloudTrash);
       }
       const now = new Date();
       setLastSyncedTime(
@@ -249,7 +299,7 @@ export const AssignmentsPage: React.FC = () => {
 
   const saveTrashAssignments = (newTrash: Assignment[]) => {
     setTrashAssignments(newTrash);
-    localStorage.setItem('geo_deleted_assignments', JSON.stringify(newTrash));
+    saveTrashToCloud(newTrash);
   };
 
   const [isTrashModalOpen, setIsTrashModalOpen] = useState(false);

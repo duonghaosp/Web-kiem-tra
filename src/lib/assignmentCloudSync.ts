@@ -68,16 +68,32 @@ export async function fetchAssignmentsFromCloud(): Promise<Assignment[]> {
         }
       });
 
-      const merged = Array.from(map.values());
-      localStorage.setItem(LOCAL_ASSIGNMENTS_KEY, JSON.stringify(merged));
+      // Sắp xếp bài kiểm tra mới nhất lên đầu danh sách (dựa vào created_at, start_time hoặc timestamp trong id)
+      const sorted = Array.from(map.values()).sort((a, b) => {
+        const getTime = (asg: Assignment) => {
+          if (asg.created_at) {
+            const t = new Date(asg.created_at).getTime();
+            if (!isNaN(t)) return t;
+          }
+          if (asg.start_time) {
+            const t = new Date(asg.start_time).getTime();
+            if (!isNaN(t)) return t;
+          }
+          const numMatch = String(asg.id).match(/\d+/);
+          return numMatch ? Number(numMatch[0]) : 0;
+        };
+        return getTime(b) - getTime(a);
+      });
+
+      localStorage.setItem(LOCAL_ASSIGNMENTS_KEY, JSON.stringify(sorted));
       window.dispatchEvent(new Event('geo_assignments_updated'));
 
       // Nếu local có thêm bài mà cloud chưa có, tự động đẩy lên cloud
-      if (merged.length > cloudAsgs.length) {
-        await saveAssignmentsToCloud(merged);
+      if (sorted.length > cloudAsgs.length) {
+        await saveAssignmentsToCloud(sorted);
       }
 
-      return merged;
+      return sorted;
     } else if (localAsgs.length > 0) {
       // Nếu cloud chưa có gì mà local đã có đề của cô Hảo -> Đẩy ngay lên cloud!
       await saveAssignmentsToCloud(localAsgs);
@@ -305,3 +321,74 @@ export async function saveAllSubmissionsToCloud(submissions: any[]): Promise<voi
     }
   }
 }
+
+// 7. Đồng bộ Thùng Rác (geo_deleted_assignments) giữa Local & Supabase Cloud
+const CLOUD_TRASH_KEY = 'geo_assignments_trash_cloud';
+const LOCAL_TRASH_KEY = 'geo_deleted_assignments';
+
+export async function saveTrashToCloud(trash: Assignment[]): Promise<void> {
+  localStorage.setItem(LOCAL_TRASH_KEY, JSON.stringify(trash));
+  window.dispatchEvent(new Event('geo_trash_updated'));
+
+  if (isSupabaseConfigured) {
+    try {
+      await supabase.from('system_settings').upsert({
+        key: CLOUD_TRASH_KEY,
+        value: {
+          trash,
+          updated_at: new Date().toISOString(),
+        },
+      }, { onConflict: 'key' });
+    } catch (err) {
+      console.warn('Lỗi lưu thùng rác lên Supabase Cloud:', err);
+    }
+  }
+}
+
+export async function fetchTrashFromCloud(): Promise<Assignment[]> {
+  let localTrash: Assignment[] = [];
+  try {
+    const raw = localStorage.getItem(LOCAL_TRASH_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) localTrash = parsed;
+    }
+  } catch (e) {
+    console.warn('Lỗi đọc thùng rác local:', e);
+  }
+
+  if (!isSupabaseConfigured) return localTrash;
+
+  try {
+    const { data: cloudRow } = await supabase
+      .from('system_settings')
+      .select('value')
+      .eq('key', CLOUD_TRASH_KEY)
+      .maybeSingle();
+
+    if (cloudRow?.value?.trash && Array.isArray(cloudRow.value.trash)) {
+      const cloudTrash: Assignment[] = cloudRow.value.trash;
+      const map = new Map<string, Assignment>();
+      cloudTrash.forEach(t => map.set(String(t.id), t));
+      localTrash.forEach(t => {
+        if (!map.has(String(t.id))) map.set(String(t.id), t);
+      });
+      const merged = Array.from(map.values());
+      localStorage.setItem(LOCAL_TRASH_KEY, JSON.stringify(merged));
+      window.dispatchEvent(new Event('geo_trash_updated'));
+
+      if (merged.length > cloudTrash.length) {
+        await saveTrashToCloud(merged);
+      }
+      return merged;
+    } else if (localTrash.length > 0) {
+      await saveTrashToCloud(localTrash);
+      return localTrash;
+    }
+  } catch (err) {
+    console.warn('Lỗi fetch thùng rác từ Supabase:', err);
+  }
+
+  return localTrash;
+}
+

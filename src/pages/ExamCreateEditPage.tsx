@@ -16,11 +16,13 @@ import {
   Download,
   GripVertical,
 } from 'lucide-react';
-import { Exam, ExamCategory, Question } from '../types/database';
+import { Exam, ExamCategory, Question, Assignment } from '../types/database';
 import { QuestionEditor } from '../components/questions/QuestionEditor';
 import { parseExcelExam, parseWordExam, downloadSampleExcelTemplate, generateQuestionId, ParsedQuestionItem } from '../lib/examParsers';
 import { ImportPreviewModal } from '../components/questions/ImportPreviewModal';
 import { LatexRenderer } from '../components/common/LatexRenderer';
+import { ExamTemplate, getStoredExamTemplates, saveStoredExamTemplates } from '../data/examTemplates';
+import { saveAssignmentsToCloud } from '../lib/assignmentCloudSync';
 
 export const ExamCreateEditPage: React.FC = () => {
   const navigate = useNavigate();
@@ -196,7 +198,7 @@ export const ExamCreateEditPage: React.FC = () => {
     setQuestions(questions.filter((q) => q.id !== qId));
   };
 
-  // Lưu Đề Thi Hoàn Chỉnh
+  // Lưu Đề Thi Hoàn Chỉnh (Đồng bộ đồng thời Thư Viện Đề Mẫu, Giao Bài và Supabase Cloud)
   const handleSaveExam = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!title.trim()) {
@@ -208,8 +210,9 @@ export const ExamCreateEditPage: React.FC = () => {
       return;
     }
 
+    const examId = id || (typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : 'ex_' + Date.now());
     const examData: Partial<Exam> = {
-      id: id || 'ex_' + Date.now(),
+      id: examId,
       title,
       description,
       category,
@@ -221,11 +224,70 @@ export const ExamCreateEditPage: React.FC = () => {
       updated_at: new Date().toISOString(),
     };
 
+    // 1. Lưu vào bảng exams Supabase (nếu khả dụng)
     if (isSupabaseConfigured) {
-      await supabase.from('exams').upsert(examData);
+      try {
+        await supabase.from('exams').upsert(examData);
+      } catch (err) {
+        console.warn('Lỗi lưu exams Supabase:', err);
+      }
     }
 
-    alert('Đã lưu Đề thi thành công! Cô có thể tiến hành Giao bài cho các lớp ngay.');
+    // 2. Lưu vào Thư Viện Đề Mẫu Chuẩn (để cô Hảo có thể dùng lại mọi lúc mọi nơi)
+    try {
+      const existingTemplates = getStoredExamTemplates();
+      const newTemplate: ExamTemplate = {
+        id: 'tpl_' + Date.now(),
+        title,
+        grade,
+        category: category === 'thuong_xuyen' ? 'Đánh giá thường xuyên' : String(category).includes('giua_ki') ? 'Kiểm tra giữa kì' : 'Kiểm tra định kì',
+        duration_minutes: durationMinutes,
+        description: description || `Đề thi môn Địa lí khối ${grade}`,
+        structure: {
+          objective_points: questions.filter(q => q.type !== 'essay').reduce((s, q) => s + (Number(q.points) || 0), 0),
+          essay_points: questions.filter(q => q.type === 'essay').reduce((s, q) => s + (Number(q.points) || 0), 0),
+          total_points: totalPoints,
+        },
+        questions,
+        created_at: new Date().toISOString(),
+      };
+      saveStoredExamTemplates([newTemplate, ...existingTemplates.filter(t => t.title !== title)]);
+    } catch (e) {
+      console.warn('Lỗi lưu đề mẫu:', e);
+    }
+
+    // 3. Tự động tạo bài kiểm tra giao cho khối tương ứng và đồng bộ lên Supabase Cloud
+    try {
+      const defaultClasses = grade === 6 ? ['Lớp 6A1'] : grade === 7 ? ['Lớp 7A1'] : grade === 8 ? ['Lớp 8A1'] : ['Lớp 9A1'];
+      const newAsg: Assignment = {
+        id: 'asg_' + Date.now(),
+        exam_id: examId,
+        title,
+        target_type: 'class',
+        target_ids: defaultClasses,
+        start_time: new Date().toISOString(),
+        deadline: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().slice(0, 16),
+        allow_late: true,
+        grade,
+        category: category === 'thuong_xuyen' ? 'Đánh giá thường xuyên' : 'Kiểm tra định kì',
+        duration_minutes: durationMinutes,
+        questions,
+        questions_count: questions.length,
+        total_points: totalPoints,
+        submissions_count: 0,
+        total_students: defaultClasses.length * 35,
+        created_at: new Date().toISOString(),
+      };
+
+      const currentRaw = localStorage.getItem('geo_assignments');
+      const currentList: Assignment[] = currentRaw ? JSON.parse(currentRaw) : [];
+      const updatedList = [newAsg, ...currentList.filter(a => a.id !== newAsg.id)];
+      await saveAssignmentsToCloud(updatedList);
+    } catch (err) {
+      console.warn('Lỗi tự động giao bài:', err);
+    }
+
+    alert('🎉 Đã lưu và xuất bản Đề thi thành công!\nĐề đã được đồng bộ lên danh sách bài giao và Thư viện đề mẫu để cô sử dụng ngay.');
     navigate('/assignments');
   };
 
