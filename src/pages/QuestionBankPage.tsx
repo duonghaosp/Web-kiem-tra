@@ -43,6 +43,7 @@ import { ImportPreviewModal } from '../components/questions/ImportPreviewModal';
 import { LatexRenderer } from '../components/common/LatexRenderer';
 import { LessonItem, getStoredLessons, saveStoredLessons } from '../data/curriculum';
 import { getStoredQuestions, saveStoredQuestions } from '../data/questionBank';
+import { getStoredStudents } from '../data/studentsData';
 import { triggerCelebration } from '../lib/gamification';
 import { playSoftClick } from '../utils/soundEffects';
 import { saveAssignmentsToCloud } from '../lib/assignmentCloudSync';
@@ -715,7 +716,11 @@ export const QuestionBankPage: React.FC = () => {
       questions_count: selectedQuestions.length,
       total_points: calcTotalPoints,
       submissions_count: 0,
-      total_students: targetClasses.length * 35,
+      total_students: (() => {
+        const allStudents = getStoredStudents();
+        const realCount = allStudents.filter((s) => Boolean(s.class_name && targetClasses.includes(s.class_name))).length;
+        return realCount > 0 ? realCount : targetClasses.length * 35;
+      })(),
     };
 
     // 1. Lưu vào LocalStorage

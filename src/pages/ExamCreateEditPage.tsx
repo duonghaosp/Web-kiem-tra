@@ -22,6 +22,7 @@ import { parseExcelExam, parseWordExam, downloadSampleExcelTemplate, generateQue
 import { ImportPreviewModal } from '../components/questions/ImportPreviewModal';
 import { LatexRenderer } from '../components/common/LatexRenderer';
 import { ExamTemplate, getStoredExamTemplates, saveStoredExamTemplates } from '../data/examTemplates';
+import { getStoredStudents } from '../data/studentsData';
 import { saveAssignmentsToCloud } from '../lib/assignmentCloudSync';
 
 export const ExamCreateEditPage: React.FC = () => {
@@ -275,7 +276,11 @@ export const ExamCreateEditPage: React.FC = () => {
         questions_count: questions.length,
         total_points: totalPoints,
         submissions_count: 0,
-        total_students: defaultClasses.length * 35,
+        total_students: (() => {
+          const allStudents = getStoredStudents();
+          const realCount = allStudents.filter(s => Boolean(s.class_name && defaultClasses.includes(s.class_name))).length;
+          return realCount > 0 ? realCount : defaultClasses.length * 35;
+        })(),
         created_at: new Date().toISOString(),
       };
 

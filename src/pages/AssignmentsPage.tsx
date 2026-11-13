@@ -39,9 +39,11 @@ import {
   FileEdit,
   Cloud,
 } from 'lucide-react';
-import { Assignment, TargetType, Question, QuestionType } from '../types/database';
+import { Assignment, TargetType, Question, QuestionType, Profile } from '../types/database';
 import { getStoredLessons, LessonItem } from '../data/curriculum';
 import { getStoredQuestions } from '../data/questionBank';
+import { getStoredStudents } from '../data/studentsData';
+import { fetchStudentsFromCloud } from '../lib/studentCloudSync';
 import {
   ExamTemplate,
   DEFAULT_EXAM_TEMPLATES,
@@ -159,6 +161,9 @@ export const AssignmentsPage: React.FC = () => {
     await saveAssignmentsToCloud(newAsgs);
   };
 
+  // Danh sách học sinh thực tế của các lớp để tính chính xác sĩ số nhận đề
+  const [students, setStudents] = useState<Profile[]>(() => getStoredStudents());
+
   // Danh sách bài nộp của học sinh để hiển thị số lượng nộp bài theo thời gian thực
   const [studentSubmissions, setStudentSubmissions] = useState<any[]>(() => {
     try {
@@ -168,15 +173,16 @@ export const AssignmentsPage: React.FC = () => {
     return [];
   });
 
-  // Tự động đồng bộ đề thi, bài nộp và thùng rác với Supabase Cloud khi vào trang hoặc chuyển lại tab
+  // Tự động đồng bộ đề thi, bài nộp, thùng rác và danh sách học sinh với Supabase Cloud khi vào trang hoặc chuyển lại tab
   useEffect(() => {
     async function syncAssignmentsWithCloud() {
       setIsSyncing(true);
       try {
-        const [cloudAsgs, cloudSubs, cloudTrash] = await Promise.all([
+        const [cloudAsgs, cloudSubs, cloudTrash, cloudStudents] = await Promise.all([
           fetchAssignmentsFromCloud(),
           fetchStudentSubmissionsFromCloud(),
           fetchTrashFromCloud(),
+          fetchStudentsFromCloud(),
         ]);
         if (cloudAsgs && cloudAsgs.length > 0) {
           setAssignments(cloudAsgs);
@@ -186,6 +192,9 @@ export const AssignmentsPage: React.FC = () => {
         }
         if (cloudTrash && cloudTrash.length > 0) {
           setTrashAssignments(cloudTrash);
+        }
+        if (cloudStudents && cloudStudents.length > 0) {
+          setStudents(cloudStudents);
         }
         const now = new Date();
         setLastSyncedTime(
@@ -220,20 +229,30 @@ export const AssignmentsPage: React.FC = () => {
       } catch (e) {}
     };
 
+    const handleStudentsUpdated = () => {
+      try {
+        setStudents(getStoredStudents());
+      } catch (e) {}
+    };
+
     window.addEventListener('geo_assignments_updated', handleAssignmentsUpdated);
     window.addEventListener('geo_student_submissions_updated', handleSubmissionsUpdated);
     window.addEventListener('geo_trash_updated', handleTrashUpdated);
+    window.addEventListener('geo_classes_students_updated', handleStudentsUpdated);
     window.addEventListener('storage', handleAssignmentsUpdated);
     window.addEventListener('storage', handleSubmissionsUpdated);
     window.addEventListener('storage', handleTrashUpdated);
+    window.addEventListener('storage', handleStudentsUpdated);
 
     return () => {
       window.removeEventListener('geo_assignments_updated', handleAssignmentsUpdated);
       window.removeEventListener('geo_student_submissions_updated', handleSubmissionsUpdated);
       window.removeEventListener('geo_trash_updated', handleTrashUpdated);
+      window.removeEventListener('geo_classes_students_updated', handleStudentsUpdated);
       window.removeEventListener('storage', handleAssignmentsUpdated);
       window.removeEventListener('storage', handleSubmissionsUpdated);
       window.removeEventListener('storage', handleTrashUpdated);
+      window.removeEventListener('storage', handleStudentsUpdated);
     };
   }, []);
 
@@ -243,10 +262,11 @@ export const AssignmentsPage: React.FC = () => {
   const handleManualRefresh = async () => {
     setIsSyncing(true);
     try {
-      const [cloudAsgs, cloudSubs, cloudTrash] = await Promise.all([
+      const [cloudAsgs, cloudSubs, cloudTrash, cloudStudents] = await Promise.all([
         fetchAssignmentsFromCloud(),
         fetchStudentSubmissionsFromCloud(),
         fetchTrashFromCloud(),
+        fetchStudentsFromCloud(),
       ]);
       if (cloudAsgs && cloudAsgs.length > 0) {
         setAssignments(cloudAsgs);
@@ -256,6 +276,9 @@ export const AssignmentsPage: React.FC = () => {
       }
       if (cloudTrash && cloudTrash.length > 0) {
         setTrashAssignments(cloudTrash);
+      }
+      if (cloudStudents && cloudStudents.length > 0) {
+        setStudents(cloudStudents);
       }
       const now = new Date();
       const timeStr = `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}:${now.getSeconds().toString().padStart(2, '0')}`;
@@ -654,7 +677,14 @@ export const AssignmentsPage: React.FC = () => {
       questions_count: selectedExamQuestions.length,
       total_points: structureAnalysis.totalScore,
       submissions_count: 0,
-      total_students: createSelectedClasses.length * 35,
+      total_students: (() => {
+        const selectedClassStudentsCount = students.filter(
+          (s) => Boolean(s.class_name && createSelectedClasses.includes(s.class_name))
+        ).length;
+        return selectedClassStudentsCount > 0
+          ? selectedClassStudentsCount
+          : createSelectedClasses.length * 35;
+      })(),
       created_at: new Date().toISOString(),
     };
 
@@ -1008,9 +1038,16 @@ export const AssignmentsPage: React.FC = () => {
               (s: any) => s.assignment_id === asg.id
             ).length || asg.submissions_count || 0;
 
+            // Tính sĩ số học sinh thực tế của các lớp nhận bài
+            const targetClasses = asg.target_ids || [];
+            const actualClassStudentsCount = students.filter(
+              (s) => Boolean(s.class_name && targetClasses.includes(s.class_name))
+            ).length;
+            const realTotalStudents = actualClassStudentsCount > 0 ? actualClassStudentsCount : (asg.total_students || 35);
+
             const submissionPercent = Math.min(
               100,
-              Math.round((actualSubmissionsCount / (asg.total_students || 1)) * 100)
+              Math.round((actualSubmissionsCount / (realTotalStudents || 1)) * 100)
             );
 
             return (
@@ -1081,7 +1118,7 @@ export const AssignmentsPage: React.FC = () => {
                       <span>
                         Đã nộp:{' '}
                         <strong className="text-ocean-700 font-bold">
-                          {actualSubmissionsCount}/{asg.total_students}
+                          {actualSubmissionsCount}/{realTotalStudents}
                         </strong>{' '}
                         học sinh ({submissionPercent}%)
                       </span>
@@ -1397,6 +1434,7 @@ export const AssignmentsPage: React.FC = () => {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-1">
                   {availableClassesForGrade.map((cls) => {
                     const isChecked = createSelectedClasses.includes(cls);
+                    const countInClass = students.filter((s) => s.class_name === cls).length;
                     return (
                       <button
                         key={cls}
@@ -1408,15 +1446,35 @@ export const AssignmentsPage: React.FC = () => {
                             : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'
                         }`}
                       >
-                        <span>{cls}</span>
+                        <div className="flex flex-col text-left">
+                          <span>{cls}</span>
+                          <span className="text-[10px] font-normal text-slate-500">
+                            {countInClass > 0 ? `${countInClass} học sinh` : 'Chưa có DS'}
+                          </span>
+                        </div>
                         {isChecked ? (
-                          <CheckCircle2 className="w-4 h-4 text-ocean-600 fill-ocean-100" />
+                          <CheckCircle2 className="w-4 h-4 text-ocean-600 fill-ocean-100 shrink-0" />
                         ) : (
-                          <div className="w-4 h-4 rounded-full border border-slate-300" />
+                          <div className="w-4 h-4 rounded-full border border-slate-300 shrink-0" />
                         )}
                       </button>
                     );
                   })}
+                </div>
+
+                <div className="text-[11px] font-medium text-slate-600 flex items-center justify-between pt-1 border-t border-slate-200/60">
+                  <span>
+                    Đã chọn: <strong className="text-ocean-700 font-bold">{createSelectedClasses.length} lớp</strong> ({createSelectedClasses.join(', ')})
+                  </span>
+                  <span>
+                    Tổng sĩ số thực tế:{' '}
+                    <strong className="text-emerald-700 font-bold">
+                      {createSelectedClasses.reduce(
+                        (sum, cls) => sum + students.filter((s) => s.class_name === cls).length,
+                        0
+                      )} học sinh
+                    </strong>
+                  </span>
                 </div>
               </div>
 
